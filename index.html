@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#EAF7F4">
+<title>Nasodren Akış</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<div id="app">
+  <header id="hud" class="off">
+    <div class="row">
+      <div class="pill" id="hudLevel">Bölüm 1</div>
+      <div class="pill" id="hudScore">0</div>
+      <button class="icon" id="btnMute" aria-label="Sesi kapat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path id="muteWave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>
+      <button class="icon" id="btnPause" aria-label="Duraklat"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.5"/><rect x="14" y="5" width="4" height="14" rx="1.5"/></svg></button>
+    </div>
+    <div class="row">
+      <div class="bar"><span id="hudBarLabel">Tıkanıklık</span><div class="track"><div class="fill" id="hudFill"></div></div></div>
+      <div id="chips">
+        <div class="chip" id="chipSerum"><img alt="" data-icon="serum"><i><b></b></i></div>
+        <div class="chip" id="chipBreeze"><img alt="" data-icon="breeze"><i><b></b></i></div>
+        <div class="chip" id="chipVirus" title="Serbest virüs"><img alt="Serbest virüs" data-icon="virus"><span id="chipVirusN">0</span></div>
+        <div class="chip" id="chipCarry" title="Taşınan virüs"><img alt="Taşınan virüs" data-icon="infected"><span id="chipCarryN">0</span></div>
+      </div>
+    </div>
+  </header>
+
+  <main id="stage">
+    <div id="callout"></div>
+    <div id="hint"><div class="hand">👆</div><p id="hintText">Yön vermek için kaydır</p></div>
+    <div id="fps"></div>
+  </main>
+  <div id="toast" role="status"><div class="em" id="toastEm"></div><div><b id="toastTitle"></b><span id="toastDesc"></span></div></div>
+
+  <!-- Ana ekran -->
+  <section class="overlay show" id="scrHome" aria-labelledby="tHome">
+    <div class="brand">
+      <img alt="" data-icon="gold">
+      <div class="wordmark">Nasodren</div>
+      <h1 id="tHome">Akış</h1>
+      <p>Sinüsleri temizleyen akışı sen yönet</p>
+    </div>
+    <div class="sheet">
+      <div class="stack">
+        <button class="btn" id="btnAdventure">Maceraya başla</button>
+        <div class="btns" style="margin:0">
+          <button class="btn ghost" id="btnEndless">Serbest akış</button>
+          <button class="btn ghost" id="btnCollect">Koleksiyon</button>
+        </div>
+      </div>
+      <div class="homestats"><span><b id="hsStars">0</b>/24 yıldız</span><span><b id="hsBadges">0</b>/<span id="hsBadgesTotal">13</span> rozet</span><span>Rekor <b id="hsBest">0</b></span></div>
+      <p class="legal">Bu oyun eğlence ve bilgilendirme amaçlıdır; tıbbi teşhis, tedavi ya da hekim tavsiyesi yerine geçmez. Ürünü kullanmadan önce kullanma talimatını okuyun, beklenmeyen bir etki görürseniz hekiminize veya eczacınıza danışın.</p>
+    </div>
+  </section>
+
+  <!-- Harita -->
+  <section class="overlay" id="scrMap" aria-labelledby="tMap">
+    <div class="card">
+      <div class="head">
+        <button class="icon" data-back aria-label="Geri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 id="tMap">Sinüs haritası</h2>
+      </div>
+      <p>Burun boşluğundan başlayıp tüm sinüsleri dolaş. Her bölümde üç yıldız var.</p>
+      <div id="map"></div>
+    </div>
+  </section>
+
+  <!-- Bölüm girişi -->
+  <section class="overlay" id="scrIntro" aria-labelledby="tIntro">
+    <div class="card">
+      <p class="kicker" id="inKicker">Bölüm 1</p>
+      <h2 id="tIntro">Burun boşluğu</h2>
+      <p id="inDesc"></p>
+      <p class="sub">Bu bölümde</p>
+      <div class="legend" id="inLegend"></div>
+      <div id="inGoalsWrap"><p class="sub">Yıldız hedefleri</p><ul class="goals" id="inGoals"></ul></div>
+      <button class="btn" id="btnStart">Başla</button>
+      <div class="btns"><button class="btn ghost" data-back>Geri</button></div>
+    </div>
+  </section>
+
+  <!-- Bölüm sonucu -->
+  <section class="overlay" id="scrResult" aria-labelledby="tResult">
+    <div class="card">
+      <div class="bigstars" id="reStars"><span>★</span><span>★</span><span>★</span></div>
+      <h2 id="tResult" style="text-align:center">Temizlendi</h2>
+      <ul class="goals" id="reGoals" style="margin-top:10px"></ul>
+      <div class="stats">
+        <div><b id="reScore">0</b><span>Skor</span></div>
+        <div><b id="reClean">0%</b><span>Temiz alan</span></div>
+        <div><b id="reTime">0</b><span>Süre</span></div>
+        <div id="reVirusWrap"><b id="reVirus">0</b><span>Atılan virüs</span></div>
+      </div>
+      <div class="fact" id="reFact"><div class="em">💡</div><div><strong id="reFactTitle">Biliyor muydunuz?</strong><p id="reFactText"></p></div></div>
+      <button class="btn" id="btnNext">Sonraki bölüm</button>
+      <div class="btns"><button class="btn ghost" id="btnReplay">Tekrar</button><button class="btn ghost" id="btnMapFromResult">Harita</button></div>
+    </div>
+  </section>
+
+  <!-- Oyun sonu -->
+  <section class="overlay" id="scrOver" aria-labelledby="tOver">
+    <div class="card">
+      <h2 id="tOver">Akış takıldı</h2>
+      <p id="overReason">Drenaj mukoza duvarına çarptı.</p>
+      <div class="stats">
+        <div><b id="ovScore">0</b><span>Skor</span></div>
+        <div><b id="ovBest">0</b><span id="ovBestLabel">Rekor</span></div>
+        <div><b id="ovLen">0</b><span>Uzunluk</span></div>
+      </div>
+      <div class="tip"><b>İpucu:</b> <span id="ovTip"></span></div>
+      <button class="btn" id="btnRetry">Tekrar oyna</button>
+      <div class="btns"><button class="btn ghost" id="btnOverBack">Harita</button></div>
+      <a class="link" id="ctaLink" href="https://nasodren.com.tr/" target="_blank" rel="noopener">Nasodren hakkında bilgi al</a>
+    </div>
+  </section>
+
+  <!-- Duraklat -->
+  <section class="overlay" id="scrPause" aria-labelledby="tPause">
+    <div class="card">
+      <h2 id="tPause">Duraklatıldı</h2>
+      <p>Hazır olduğunda kaldığın yerden devam et.</p>
+      <div class="stack">
+        <button class="btn" id="btnResume">Devam et</button>
+        <button class="btn ghost" id="btnRestart">Baştan başla</button>
+        <button class="btn ghost" id="btnQuit">Ana menü</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Koleksiyon -->
+  <section class="overlay" id="scrCollect" aria-labelledby="tCollect">
+    <div class="card">
+      <div class="head">
+        <button class="icon" data-back aria-label="Geri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2 id="tCollect">Koleksiyon</h2>
+      </div>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-tab="skins" aria-selected="true">Görünüm</button>
+        <button class="tab" role="tab" data-tab="badges" aria-selected="false">Rozetler</button>
+        <button class="tab" role="tab" data-tab="facts" aria-selected="false">Bilgi kartları</button>
+      </div>
+      <div id="collectBody"></div>
+    </div>
+  </section>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

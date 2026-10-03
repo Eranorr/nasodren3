@@ -1,311 +1,8 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#EAF7F4">
-<title>Nasodren Akış</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&display=swap" rel="stylesheet">
-<style>
-:root{
-  --air:#EAF7F4; --ink:#3A1530; --ink2:#7A5068; --cyc:#D6227F; --cycd:#A3125A;
-  --flow:#1FB5A0; --flowd:#138A7A; --tissue:#F6C4C0; --card:#FFFFFF; --line:#F1D9E1; --gold:#F4B81F;
-  --font:"Baloo 2", ui-rounded, "Segoe UI", system-ui, -apple-system, sans-serif;
-  box-sizing:border-box;
-  padding-top:env(safe-area-inset-top,0px);
-  padding-bottom:env(safe-area-inset-bottom,0px);
-  color-scheme:light;
-}
-/* Oyun tek, açık bir temada tasarlandı; koyu tema tercihinde de aynı paleti korur. */
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --air:#EAF7F4; --ink:#3A1530; } }
-:root[data-theme="dark"]{ --air:#EAF7F4; --ink:#3A1530; }
-*,*::before,*::after{box-sizing:inherit}
-html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
-html,body{margin:0;background:var(--air);color:var(--ink);font-family:var(--font);overflow:hidden;overscroll-behavior:none;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
-body{height:100%}
-#app{position:relative;height:100%;display:flex;flex-direction:column;max-width:760px;margin:0 auto}
-img{max-width:100%}
+import * as PIXI from 'pixi.js';
 
-/* ---------- HUD ---------- */
-#hud{display:flex;flex-direction:column;gap:6px;padding:10px 12px 2px;transition:opacity .2s}
-#hud.off{opacity:0;pointer-events:none}
-.row{display:flex;align-items:center;gap:8px}
-.pill{background:var(--card);border-radius:999px;padding:4px 14px;box-shadow:0 2px 0 var(--line);font-weight:700;white-space:nowrap}
-#hudLevel{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:15px}
-#hudScore{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;min-width:64px;text-align:center;color:var(--cyc)}
-.bar{flex:1;display:flex;align-items:center;gap:8px;background:var(--card);border-radius:999px;padding:6px 12px;box-shadow:0 2px 0 var(--line);min-width:0}
-.bar span{font-size:13px;font-weight:700;color:var(--ink2);white-space:nowrap}
-.track{flex:1;height:10px;border-radius:10px;background:#F4E3E9;overflow:hidden}
-.fill{height:100%;background:#B9C63A;transform-origin:left center;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
-.fill.open{background:var(--flow)}
-#chips{display:flex;gap:6px}
-.chip{display:none;align-items:center;gap:4px;background:var(--card);border-radius:999px;padding:3px 8px 3px 4px;box-shadow:0 2px 0 var(--line);font-size:12px;font-weight:700}
-.chip.on{display:flex}
-.chip img{width:22px;height:22px}
-.chip i{display:block;width:28px;height:5px;border-radius:5px;background:#E9EEF0;overflow:hidden}
-.chip i b{display:block;height:100%;background:var(--flow);transform-origin:left}
-.icon{appearance:none;border:0;background:var(--card);color:var(--ink);width:38px;height:38px;border-radius:14px;display:grid;place-items:center;cursor:pointer;box-shadow:0 2px 0 var(--line);flex:none}
-.icon svg{width:18px;height:18px}
-.icon:focus-visible,.btn:focus-visible,.node:focus-visible,.tab:focus-visible,.skin:focus-visible,.link:focus-visible{outline:3px solid var(--flow);outline-offset:2px}
+// Mobilde konsol: adrese ?eruda ekle (yalnızca geliştirme modunda)
+if (import.meta.env.DEV && /eruda/.test(location.search + location.hash)) import('eruda').then(m => m.default.init());
 
-#stage{position:relative;flex:1;min-height:0;touch-action:none}
-#stage canvas{display:block;position:absolute;inset:0;width:100%;height:100%}
-#callout{position:absolute;left:50%;top:14%;transform:translate(-50%,0);pointer-events:none;font-weight:800;font-size:clamp(22px,6vw,32px);color:var(--ink);text-align:center;opacity:0;white-space:nowrap;-webkit-text-stroke:0;text-shadow:0 0 0 #fff,2px 2px 0 #fff,-2px -2px 0 #fff,2px -2px 0 #fff,-2px 2px 0 #fff,0 3px 0 #fff,0 6px 16px rgba(58,21,48,.25);z-index:2}
-#callout small{display:block;font-weight:700;font-size:.5em;color:var(--cycd);margin-top:-2px}
-#callout.go{animation:call 1.6s cubic-bezier(.2,.8,.2,1) forwards}
-@keyframes call{0%{opacity:0;transform:translate(-50%,12px) scale(.85)}12%{opacity:1;transform:translate(-50%,0) scale(1.06)}22%{transform:translate(-50%,0) scale(1)}78%{opacity:1}100%{opacity:0;transform:translate(-50%,-14px)}}
-#hint{position:absolute;left:50%;top:55%;transform:translate(-50%,-50%);pointer-events:none;display:none;flex-direction:column;align-items:center;gap:6px;z-index:2}
-#hint.on{display:flex}
-#hint .hand{font-size:46px;animation:swipe 1.4s ease-in-out infinite}
-#hint p{margin:0;background:var(--card);padding:6px 14px;border-radius:999px;font-weight:700;box-shadow:0 3px 0 var(--line)}
-@keyframes swipe{0%,100%{transform:translateX(-40px) rotate(-8deg)}50%{transform:translateX(40px) rotate(8deg)}}
-#fps{position:absolute;right:8px;bottom:8px;font:700 11px/1 var(--font);color:#fff;background:rgba(58,21,48,.7);padding:5px 7px;border-radius:6px;display:none;pointer-events:none;z-index:3}
-#toast{position:absolute;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translate(-50%,140%);background:var(--card);border-radius:18px;padding:10px 16px 10px 10px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 0 var(--line),0 12px 30px rgba(58,21,48,.15);z-index:20;transition:transform .35s cubic-bezier(.2,.9,.3,1.2);max-width:92%}
-#toast.on{transform:translate(-50%,0)}
-#toast .em{font-size:28px;width:44px;height:44px;display:grid;place-items:center;background:#FDEAF3;border-radius:14px}
-#toast b{display:block;font-size:15px}
-#toast span{font-size:13px;color:var(--ink2)}
-
-/* ---------- Ekranlar ---------- */
-.overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(234,247,244,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:10}
-.overlay.show{display:flex}
-.card{width:100%;max-width:440px;max-height:100%;overflow:auto;background:var(--card);border-radius:28px;padding:22px 22px 18px;box-shadow:0 6px 0 var(--line),0 24px 60px rgba(58,21,48,.14);-webkit-overflow-scrolling:touch}
-.card h2{font-size:30px;line-height:1.02;margin:0 0 6px;font-weight:800}
-.card p{margin:0 0 12px;line-height:1.4;font-size:16px;color:var(--ink2);max-width:60ch}
-.kicker{font-weight:700;color:var(--cyc);font-size:15px;margin:0 0 2px}
-.btn{appearance:none;border:0;width:100%;padding:14px 18px 12px;border-radius:18px;font:800 19px/1 var(--font);background:var(--cyc);color:#fff;cursor:pointer;box-shadow:0 5px 0 var(--cycd);transition:transform .06s,box-shadow .06s;display:flex;align-items:center;justify-content:center;gap:8px}
-.btn:active{transform:translateY(4px);box-shadow:0 1px 0 var(--cycd)}
-.btn.ghost{background:var(--card);color:var(--ink);box-shadow:0 4px 0 #E6C8D3;border:2px solid var(--line);font-size:17px}
-.btn.ghost:active{box-shadow:0 1px 0 #E6C8D3}
-.btn.teal{background:var(--flow);box-shadow:0 5px 0 var(--flowd)}
-.btn small{font-weight:600;font-size:13px;opacity:.8}
-.btns{display:flex;gap:10px;margin-top:10px}
-.stack{display:flex;flex-direction:column;gap:12px}
-.link{display:block;text-align:center;margin-top:14px;color:var(--cycd);font-weight:700;font-size:15px}
-.legal{font-size:11.5px;line-height:1.4;color:#9A7F8C;margin:14px 0 0}
-.head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.head h2{flex:1;margin:0}
-
-/* Ana ekran */
-#scrHome{align-items:stretch;justify-content:space-between;flex-direction:column;background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;padding:14px}
-#scrHome.show{display:flex}
-.brand{align-self:center;text-align:center;background:rgba(255,255,255,.88);border-radius:26px;padding:12px 26px 10px;box-shadow:0 5px 0 var(--line)}
-.brand img{width:54px;height:54px;display:block;margin:0 auto -4px}
-.brand .wordmark{font-size:14px;font-weight:700;color:var(--cyc);letter-spacing:.02em}
-.brand h1{margin:0;font-size:clamp(46px,13vw,64px);line-height:.9;font-weight:800;color:var(--ink)}
-.brand p{margin:4px 0 0;font-size:15px;color:var(--ink2);font-weight:600}
-.sheet{align-self:center;width:100%;max-width:440px;background:var(--card);border-radius:28px;padding:18px;box-shadow:0 6px 0 var(--line),0 20px 50px rgba(58,21,48,.12)}
-.homestats{display:flex;justify-content:center;gap:18px;font-size:14px;color:var(--ink2);font-weight:700;margin:12px 0 0}
-.homestats b{color:var(--ink)}
-
-/* Harita */
-#map{position:relative;margin:4px 0 0}
-#map svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-.node{position:absolute;transform:translate(-50%,-30px);display:flex;flex-direction:column;align-items:center;gap:0;appearance:none;background:none;border:0;padding:0;cursor:pointer;font-family:var(--font);color:var(--ink);width:130px}
-.node .disc{width:60px;height:60px;border-radius:50%;display:grid;place-items:center;font-size:24px;font-weight:800;background:var(--cyc);color:#fff;box-shadow:0 5px 0 var(--cycd)}
-.node.done .disc{background:var(--flow);box-shadow:0 5px 0 var(--flowd)}
-.node.lock{cursor:default}
-.node.lock .disc{background:#EFE3E8;color:#B79AA8;box-shadow:0 5px 0 #DCC8D1}
-.node.next .disc{animation:bob 1.6s ease-in-out infinite}
-@keyframes bob{50%{transform:translateY(-5px)}}
-.node .nm{margin-top:8px;font-weight:700;font-size:14px;line-height:1.1;text-align:center;background:rgba(255,255,255,.95);padding:0 6px;border-radius:8px}
-.stars{color:#E7D6DD;font-size:16px;letter-spacing:1px;line-height:1}
-.stars .on{color:var(--gold)}
-
-/* Bölüm giriş */
-.legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:4px 0 14px}
-.legend div{display:flex;align-items:center;gap:8px;background:#FBF4F7;border-radius:14px;padding:6px 8px}
-.legend img{width:34px;height:34px;flex:none}
-.legend b{display:block;font-size:14px;line-height:1.1}
-.legend span{display:block;font-size:12px;color:var(--ink2);line-height:1.2}
-.goals{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:6px}
-.goals li{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px}
-.goals .st{font-size:20px;color:#E7D6DD;width:24px;text-align:center}
-.goals .st.on{color:var(--gold)}
-.goals .ok{margin-left:auto;font-weight:800}
-.goals .ok.y{color:var(--flow)} .goals .ok.n{color:#C9A9B7}
-.sub{font-size:14px;font-weight:700;color:var(--ink);margin:0 0 6px}
-
-/* Sonuç */
-.bigstars{display:flex;justify-content:center;gap:6px;margin:4px 0 10px}
-.bigstars span{font-size:52px;line-height:1;color:#EFE3E8;transform:scale(.3);opacity:0}
-.bigstars span.on{color:var(--gold);text-shadow:0 4px 0 #D29A12}
-.bigstars.go span{animation:pop .45s cubic-bezier(.2,.9,.3,1.4) forwards}
-.bigstars.go span:nth-child(2){animation-delay:.18s}.bigstars.go span:nth-child(3){animation-delay:.36s}
-@keyframes pop{to{transform:scale(1);opacity:1}}
-.stats{display:flex;justify-content:space-around;gap:10px;margin:0 0 14px;background:#FBF4F7;border-radius:18px;padding:10px}
-.stats div{display:flex;flex-direction:column;align-items:center}
-.stats b{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
-.stats span{font-size:12.5px;color:var(--ink2);font-weight:600}
-.fact{background:#E6F7F3;border-radius:18px;padding:12px 14px;margin:0 0 14px;display:flex;gap:10px}
-.fact .em{font-size:26px;line-height:1}
-.fact strong{display:block;font-size:14px;color:var(--flowd);margin-bottom:2px}
-.fact p{margin:0;font-size:15px;color:var(--ink)}
-.tip{background:#FFF6DC;border-radius:16px;padding:10px 14px;margin:0 0 14px;font-size:15px;font-weight:600}
-.tip b{color:#B07A00}
-
-/* Koleksiyon */
-.tabs{display:flex;background:#FBF4F7;border-radius:16px;padding:4px;gap:4px;margin:0 0 14px}
-.tab{flex:1;appearance:none;border:0;background:transparent;font:700 15px/1 var(--font);padding:10px 4px 8px;border-radius:12px;color:var(--ink2);cursor:pointer}
-.tab[aria-selected="true"]{background:var(--card);color:var(--ink);box-shadow:0 2px 0 var(--line)}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.badge,.skin{background:#FBF4F7;border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:4px;text-align:left}
-.badge .em{font-size:30px;line-height:1}
-.badge b,.skin b{font-size:15px;line-height:1.15}
-.badge span,.skin span{font-size:12.5px;color:var(--ink2);line-height:1.25}
-.badge.lock{opacity:.5;filter:grayscale(1)}
-.skin{appearance:none;border:2px solid transparent;cursor:pointer;font-family:var(--font);color:var(--ink);align-items:flex-start}
-.skin[aria-pressed="true"]{border-color:var(--cyc);background:#FDEAF3}
-.skin:disabled{cursor:default;opacity:.55}
-.sw{display:flex;align-items:center;gap:3px;margin-bottom:2px}
-.sw i{display:block;border-radius:50%}
-.facts{display:flex;flex-direction:column;gap:10px}
-.facts .fact{margin:0}
-.facts .fact.lock{background:#F5EFF2}
-.facts .fact.lock p{color:#A58B98}
-@media (prefers-reduced-motion: reduce){.node.next .disc,#hint .hand{animation:none}.bigstars.go span{animation-duration:.01s}}
-</style>
-</head>
-<body>
-<div id="app">
-  <header id="hud" class="off">
-    <div class="row">
-      <div class="pill" id="hudLevel">Bölüm 1</div>
-      <div class="pill" id="hudScore">0</div>
-      <button class="icon" id="btnMute" aria-label="Sesi kapat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path id="muteWave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>
-      <button class="icon" id="btnPause" aria-label="Duraklat"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.5"/><rect x="14" y="5" width="4" height="14" rx="1.5"/></svg></button>
-    </div>
-    <div class="row">
-      <div class="bar"><span id="hudBarLabel">Tıkanıklık</span><div class="track"><div class="fill" id="hudFill"></div></div></div>
-      <div id="chips">
-        <div class="chip" id="chipSerum"><img alt="" data-icon="serum"><i><b></b></i></div>
-        <div class="chip" id="chipBreeze"><img alt="" data-icon="breeze"><i><b></b></i></div>
-      </div>
-    </div>
-  </header>
-
-  <main id="stage">
-    <div id="callout"></div>
-    <div id="hint"><div class="hand">👆</div><p id="hintText">Yön vermek için kaydır</p></div>
-    <div id="fps"></div>
-  </main>
-  <div id="toast" role="status"><div class="em" id="toastEm"></div><div><b id="toastTitle"></b><span id="toastDesc"></span></div></div>
-
-  <!-- Ana ekran -->
-  <section class="overlay show" id="scrHome" aria-labelledby="tHome">
-    <div class="brand">
-      <img alt="" data-icon="gold">
-      <div class="wordmark">Nasodren</div>
-      <h1 id="tHome">Akış</h1>
-      <p>Sinüsleri temizleyen akışı sen yönet</p>
-    </div>
-    <div class="sheet">
-      <div class="stack">
-        <button class="btn" id="btnAdventure">Maceraya başla</button>
-        <div class="btns" style="margin:0">
-          <button class="btn ghost" id="btnEndless">Serbest akış</button>
-          <button class="btn ghost" id="btnCollect">Koleksiyon</button>
-        </div>
-      </div>
-      <div class="homestats"><span><b id="hsStars">0</b>/24 yıldız</span><span><b id="hsBadges">0</b>/12 rozet</span><span>Rekor <b id="hsBest">0</b></span></div>
-      <p class="legal">Bu oyun eğlence ve bilgilendirme amaçlıdır; tıbbi teşhis, tedavi ya da hekim tavsiyesi yerine geçmez. Ürünü kullanmadan önce kullanma talimatını okuyun, beklenmeyen bir etki görürseniz hekiminize veya eczacınıza danışın.</p>
-    </div>
-  </section>
-
-  <!-- Harita -->
-  <section class="overlay" id="scrMap" aria-labelledby="tMap">
-    <div class="card">
-      <div class="head">
-        <button class="icon" data-back aria-label="Geri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-        <h2 id="tMap">Sinüs haritası</h2>
-      </div>
-      <p>Burun boşluğundan başlayıp tüm sinüsleri dolaş. Her bölümde üç yıldız var.</p>
-      <div id="map"></div>
-    </div>
-  </section>
-
-  <!-- Bölüm girişi -->
-  <section class="overlay" id="scrIntro" aria-labelledby="tIntro">
-    <div class="card">
-      <p class="kicker" id="inKicker">Bölüm 1</p>
-      <h2 id="tIntro">Burun boşluğu</h2>
-      <p id="inDesc"></p>
-      <p class="sub">Bu bölümde</p>
-      <div class="legend" id="inLegend"></div>
-      <div id="inGoalsWrap"><p class="sub">Yıldız hedefleri</p><ul class="goals" id="inGoals"></ul></div>
-      <button class="btn" id="btnStart">Başla</button>
-      <div class="btns"><button class="btn ghost" data-back>Geri</button></div>
-    </div>
-  </section>
-
-  <!-- Bölüm sonucu -->
-  <section class="overlay" id="scrResult" aria-labelledby="tResult">
-    <div class="card">
-      <div class="bigstars" id="reStars"><span>★</span><span>★</span><span>★</span></div>
-      <h2 id="tResult" style="text-align:center">Temizlendi</h2>
-      <ul class="goals" id="reGoals" style="margin-top:10px"></ul>
-      <div class="stats">
-        <div><b id="reScore">0</b><span>Skor</span></div>
-        <div><b id="reClean">0%</b><span>Temiz alan</span></div>
-        <div><b id="reTime">0</b><span>Süre</span></div>
-      </div>
-      <div class="fact" id="reFact"><div class="em">💡</div><div><strong id="reFactTitle">Biliyor muydunuz?</strong><p id="reFactText"></p></div></div>
-      <button class="btn" id="btnNext">Sonraki bölüm</button>
-      <div class="btns"><button class="btn ghost" id="btnReplay">Tekrar</button><button class="btn ghost" id="btnMapFromResult">Harita</button></div>
-    </div>
-  </section>
-
-  <!-- Oyun sonu -->
-  <section class="overlay" id="scrOver" aria-labelledby="tOver">
-    <div class="card">
-      <h2 id="tOver">Akış takıldı</h2>
-      <p id="overReason">Drenaj mukoza duvarına çarptı.</p>
-      <div class="stats">
-        <div><b id="ovScore">0</b><span>Skor</span></div>
-        <div><b id="ovBest">0</b><span id="ovBestLabel">Rekor</span></div>
-        <div><b id="ovLen">0</b><span>Uzunluk</span></div>
-      </div>
-      <div class="tip"><b>İpucu:</b> <span id="ovTip"></span></div>
-      <button class="btn" id="btnRetry">Tekrar oyna</button>
-      <div class="btns"><button class="btn ghost" id="btnOverBack">Harita</button></div>
-      <a class="link" id="ctaLink" href="https://nasodren.com.tr/" target="_blank" rel="noopener">Nasodren hakkında bilgi al</a>
-    </div>
-  </section>
-
-  <!-- Duraklat -->
-  <section class="overlay" id="scrPause" aria-labelledby="tPause">
-    <div class="card">
-      <h2 id="tPause">Duraklatıldı</h2>
-      <p>Hazır olduğunda kaldığın yerden devam et.</p>
-      <div class="stack">
-        <button class="btn" id="btnResume">Devam et</button>
-        <button class="btn ghost" id="btnRestart">Baştan başla</button>
-        <button class="btn ghost" id="btnQuit">Ana menü</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- Koleksiyon -->
-  <section class="overlay" id="scrCollect" aria-labelledby="tCollect">
-    <div class="card">
-      <div class="head">
-        <button class="icon" data-back aria-label="Geri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-        <h2 id="tCollect">Koleksiyon</h2>
-      </div>
-      <div class="tabs" role="tablist">
-        <button class="tab" role="tab" data-tab="skins" aria-selected="true">Görünüm</button>
-        <button class="tab" role="tab" data-tab="badges" aria-selected="false">Rozetler</button>
-        <button class="tab" role="tab" data-tab="facts" aria-selected="false">Bilgi kartları</button>
-      </div>
-      <div id="collectBody"></div>
-    </div>
-  </section>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/pixi.js@8.6.6/dist/pixi.min.js"></script>
-<script>
 (async () => {
 'use strict';
 
@@ -322,23 +19,23 @@ const R = (x, y, w, h) => ({ x, y, w, h });
 const LEVELS = [
   { name: 'Burun boşluğu', desc: 'Isınma turu. Kaydırarak yön ver, mukusları topla, sonra açılan ostiumdan akışı dışarı çıkar.',
     target: 6, step: 150, obs: [], gold: .35, serum: 0, breeze: 0, obj: [['clean', 25], ['time', 50]] },
-  { name: 'Alt konka', desc: 'Konkalar burnun yan duvarlarındaki kıvrımlı raflardır. Aralarından dolaşarak ilerle.',
-    target: 8, step: 138, obs: [R(0,7,6,1), R(12,12,6,1), R(0,17,5,1)], gold: .25, serum: .18, breeze: 0, obj: [['sneeze', 1], ['clean', 30]] },
-  { name: 'Maksiller sinüs', desc: 'Sinüslerin en büyüğü. Polipler yolu daraltıyor; altın sıklamenler bu bölümde sık görünür.',
-    target: 10, step: 128, obs: [R(3,7,2,2), R(13,7,2,2), R(3,15,2,2), R(13,15,2,2)], gold: .55, serum: .12, breeze: .14, obj: [['gold', 2], ['len', 22]] },
-  { name: 'Etmoid hücreler', desc: 'Bal peteğine benzeyen küçük hücreler. İnce bölmelerin arasında keskin dönüşler gerekecek.',
-    target: 12, step: 120, obs: [R(2,6,5,1), R(11,6,5,1), R(3,12,5,1), R(10,12,5,1), R(2,17,4,1), R(12,17,4,1)], gold: .25, serum: .16, breeze: .14, obj: [['clean', 40], ['time', 70]] },
+  { name: 'Alt konka', desc: 'Konkalar burnun yan duvarlarındaki kıvrımlı raflardır. Aralarından dolaşarak ilerle. İlk virüs de burada: mukusa yapışınca onu toplayıp çıkışa taşı. Virüse kafa atarsan drenaj kısalır.',
+    target: 8, step: 138, obs: [R(0,7,6,1), R(12,12,6,1), R(0,17,5,1)], gold: .25, serum: .18, breeze: 0, virus: 1, virusEvery: 3, obj: [['sneeze', 1], ['clean', 30]] },
+  { name: 'Maksiller sinüs', desc: 'Sinüslerin en büyüğü. Polipler yolu daraltıyor. Virüslerin yapışması için biraz mukus bırak, sonra hepsini dışarı taşı.',
+    target: 10, step: 128, obs: [R(3,7,2,2), R(13,7,2,2), R(3,15,2,2), R(13,15,2,2)], gold: .55, serum: .12, breeze: .14, virus: 2, virusEvery: 3, obj: [['virus', 2], ['gold', 2]] },
+  { name: 'Etmoid hücreler', desc: 'Bal peteğine benzeyen küçük hücreler. Virüsler temizlenmemiş dokuda çoğalır; önce alanı temizle.',
+    target: 12, step: 120, obs: [R(2,6,5,1), R(11,6,5,1), R(3,12,5,1), R(10,12,5,1), R(2,17,4,1), R(12,17,4,1)], gold: .25, serum: .16, breeze: .14, virus: 2, replicate: 14000, virusMax: 5, obj: [['clean', 40], ['noinfect', 0]] },
   { name: 'Frontal sinüs', desc: 'Tıkaçlar ileri geri geziniyor. Önlerine çıkma, arkalarından geç.',
-    target: 12, step: 116, obs: [R(3,10,2,2), R(13,10,2,2)], movers: [[2,5,1], [15,15,-1]], gold: .25, serum: .2, breeze: .14, obj: [['sneeze', 2], ['clean', 35]] },
+    target: 12, step: 116, obs: [R(3,10,2,2), R(13,10,2,2)], movers: [[2,5,1], [15,15,-1]], gold: .25, serum: .2, breeze: .14, virus: 2, replicate: 12000, virusMax: 5, obj: [['sneeze', 2], ['clean', 35]] },
   { name: 'Sfenoid sinüs', desc: 'Burada uzun süre bekleyen mukus sertleşir ve yolu kapatır. Titremeye başlayanı önce topla.',
-    target: 12, step: 112, obs: [R(3,5,2,1), R(13,5,2,1), R(5,10,2,1), R(11,10,2,1), R(3,15,2,1), R(13,15,2,1)], harden: 9000, gold: .2, serum: .2, breeze: .2, obj: [['nohard', 0], ['time', 75]] },
+    target: 12, step: 112, obs: [R(3,5,2,1), R(13,5,2,1), R(5,10,2,1), R(11,10,2,1), R(3,15,2,1), R(13,15,2,1)], harden: 9000, gold: .2, serum: .2, breeze: .2, virus: 2, replicate: 12000, virusMax: 5, obj: [['nohard', 0], ['time', 75]] },
   { name: 'Sinüs kanalları', desc: 'Bir bölme alanı ikiye ayırıyor. Kanallardan birine gir, diğerinden aynı yönde çık.',
-    target: 12, step: 118, obs: [R(0,11,18,1)], portals: [[4,16], [13,5]], gold: .3, serum: .12, breeze: .16, obj: [['clean', 40], ['gold', 1]] },
-  { name: 'Ostium labirenti', desc: 'Final. Polipler, tıkaçlar ve sertleşen mukus bir arada. Akışı sonuna kadar taşı.',
-    target: 16, step: 108, obs: [R(3,6,2,2), R(13,6,2,2), R(2,13,4,1), R(12,13,4,1), R(6,3,6,1)], movers: [[2,17,1]], harden: 10000, gold: .25, serum: .2, breeze: .2, obj: [['sneeze', 2], ['clean', 45]] },
+    target: 12, step: 118, obs: [R(0,11,18,1)], portals: [[4,16], [13,5]], gold: .3, serum: .12, breeze: .16, virus: 2, replicate: 11000, virusMax: 6, obj: [['clean', 40], ['virus', 3]] },
+  { name: 'Ostium labirenti', desc: 'Final. Polipler, tıkaçlar, sertleşen mukus ve virüsler bir arada. Akışı sonuna kadar taşı.',
+    target: 16, step: 108, obs: [R(3,6,2,2), R(13,6,2,2), R(2,13,4,1), R(12,13,4,1), R(6,3,6,1)], movers: [[2,17,1]], harden: 10000, gold: .25, serum: .2, breeze: .2, virus: 3, replicate: 10000, virusMax: 7, obj: [['virus', 4], ['clean', 45]] },
 ];
-const ENDLESS = { name: 'Serbest akış', desc: 'Bölüm yok, çıkış yok. Ne kadar çok mukus toplarsan akış o kadar hızlanır. Rekorunu kovala.',
-  target: Infinity, step: 135, obs: [], gold: .22, serum: .14, breeze: .14 };
+const ENDLESS = { name: 'Serbest akış', desc: 'Bölüm yok, çıkış yok. Ne kadar çok mukus toplarsan akış o kadar hızlanır. Virüslü mukusu topla, akış onu kuyruktan dışarı atar. Rekorunu kovala.',
+  target: Infinity, step: 135, obs: [], gold: .22, serum: .14, breeze: .14, virus: 1, replicate: 13000, virusMax: 6, respawn: 10000 };
 const DEMO = { name: 'demo', target: Infinity, step: 118, obs: [], gold: 0, serum: 0, breeze: 0 };
 
 // Kullanma talimatı çizgisinde kalan, kesinlik ya da tedavi vaadi içermeyen bilgi kartları
@@ -362,14 +59,19 @@ const TIPS = [
   'Kanala girdiğin yönde, diğer kanaldan çıkarsın.',
   'Titreyen mukus birazdan sertleşecek. Önce onu topla.',
   'Parmağını kaldırmadan kaydırmaya devam edersen art arda dönüş yapabilirsin.',
+  'Virüsler mukusa yapışır. Virüslü mukusu toplayıp çıkışa taşırsan bonus alırsın.',
+  'Temizlediğin dokuda virüsler çoğalamaz. Şişip titreyen virüs çoğalmak üzere.',
+  'Virüse kafa atma, drenaj kısalır. Onları mukusa yönlendir.',
 ];
 const SKINS = [
-  { name: 'Nane',       need: 0,  body: 0x1FB5A0, head: 0xD6227F },
-  { name: 'Sıklamen',   need: 4,  body: 0xF06AAE, head: 0xA3125A },
-  { name: 'Okyanus',    need: 8,  body: 0x4A9DF0, head: 0x2A57C9 },
-  { name: 'Gün batımı', need: 12, body: 0xFF9A3D, head: 0xE0445A },
-  { name: 'Altın',      need: 18, body: 0xF2B91E, head: 0xC7176F },
-  { name: 'Gökkuşağı',  need: 24, body: -1,       head: 0x7A3FD1 },
+  // petal: taç yaprak, eye: yaprak dibindeki koyu leke, disc: yüzün olduğu orta kısım. petal -1 = gökkuşağı
+  { name: 'Magenta',     need: 0,  petal: 0xF075B5, eye: 0x7E0B45, disc: 0xD6227F },
+  { name: 'Pembe',       need: 4,  petal: 0xF9A3CB, eye: 0xC2185B, disc: 0xF06AAE },
+  { name: 'Beyaz',       need: 8,  petal: 0xFFFFFF, eye: 0xC2185B, disc: 0xFBE3EE },
+  { name: 'Mor',         need: 12, petal: 0xA066D6, eye: 0x4A1A7A, disc: 0x8446C2 },
+  { name: 'Kırmızı',     need: 18, petal: 0xE8434F, eye: 0x7D0F22, disc: 0xC9283A },
+  { name: 'Gökkuşağı',   need: 24, petal: -1,       eye: 0x5A1A6E, disc: 0x7A3FD1 },
+  { name: 'Klasik akış', need: 0,  classic: true, body: 0x1FB5A0, head: 0xD6227F },
 ];
 const BADGES = [
   ['first',   '💧', 'İlk damla',       'İlk mukusunu topla'],
@@ -384,6 +86,7 @@ const BADGES = [
   ['stars15', '⭐', 'Yıldız avcısı',   '15 yıldız topla'],
   ['stars24', '👑', 'Sıklamen uzmanı', '24 yıldızın hepsi'],
   ['endless', '🏃', 'Maraton',         'Serbest akışta 1000 puan'],
+  ['virus20', '🦠', 'Kapı dışarı',     'Toplam 20 virüsü dışarı taşı'],
 ];
 const ITEM_INFO = {
   mucus:  ['Mukus', 'Topla, drenaj uzar'],
@@ -395,6 +98,8 @@ const ITEM_INFO = {
   plug:   ['Tıkaç', 'İleri geri gider'],
   portal: ['Kanal', 'Birinden gir, diğerinden çık'],
   crust:  ['Sert mukus', 'Bekleyen mukus sertleşir'],
+  virus:  ['Virüs', 'Çarpma, mukusa yapışmasını bekle'],
+  infected: ['Virüslü mukus', 'Topla, çıkışa taşı: bonus'],
 };
 
 /* =========================================================================
@@ -405,7 +110,7 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 const prog = Object.assign({ mask: Array(8).fill(0), done: Array(8).fill(false), badges: {}, skin: 0, golds: 0, serums: 0, portals: 0,
-  best: 0, endlessBest: 0, seenTut: false, muted: false, facts: Array(8).fill(false) }, store.get('ns_prog2', {}));
+  best: 0, endlessBest: 0, seenTut: false, muted: false, viruses: 0, facts: Array(8).fill(false) }, store.get('ns_prog2', {}));
 const save = () => store.set('ns_prog2', prog);
 const bits = m => (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1);
 const totalStars = () => prog.mask.reduce((a, m) => a + bits(m), 0);
@@ -449,6 +154,9 @@ function sfx(name) {
     case 'harden': tone('square', 160, 110, 0.18, 0.05); break;
     case 'star':   tone('triangle', 880, 1320, 0.16, 0.1); break;
     case 'badge':  [523, 659, 784, 1046].forEach((f, i) => tone('triangle', f, f, 0.14, 0.08, i * 0.07)); break;
+    case 'trap':   tone('sine', 620, 240, 0.18, 0.1); tone('triangle', 900, 900, 0.06, 0.05, 0.08); break;
+    case 'hurt':   tone('square', 320, 110, 0.22, 0.06); break;
+    case 'replicate': tone('triangle', 180, 360, 0.2, 0.06); tone('triangle', 240, 480, 0.2, 0.05, 0.08); break;
     case 'die':    tone('sawtooth', 240, 50, 0.45, 0.1); break;
     case 'sneeze': {
       const t = actx.currentTime, s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
@@ -581,9 +289,92 @@ C.petal = (() => { const [c, x] = cnv();
   x.translate(TS / 2, TS / 2); x.beginPath(); x.moveTo(0, TS * .42); x.bezierCurveTo(TS * .34, TS * .1, TS * .22, -TS * .38, 0, -TS * .44); x.bezierCurveTo(-TS * .22, -TS * .38, -TS * .34, TS * .1, 0, TS * .42);
   const g = x.createLinearGradient(0, -TS * .44, 0, TS * .42); g.addColorStop(0, '#F9B7D3'); g.addColorStop(1, '#E6559A'); x.fillStyle = g; x.fill();
   return c; })();
+C.virus = (() => { const [c, x] = cnv(), cx = TS / 2, cy = TS / 2, r = TS * .28;
+  x.lineCap = 'round';
+  for (let i = 0; i < 9; i++) {
+    const a = i / 9 * Math.PI * 2 - Math.PI / 2, ca = Math.cos(a), sa = Math.sin(a);
+    x.strokeStyle = '#B8401F'; x.lineWidth = 7; x.beginPath(); x.moveTo(cx + ca * r * .8, cy + sa * r * .8); x.lineTo(cx + ca * r * 1.42, cy + sa * r * 1.42); x.stroke();
+    x.fillStyle = '#FFB13D'; x.beginPath(); x.arc(cx + ca * r * 1.48, cy + sa * r * 1.48, TS * .06, 0, 6.28); x.fill();
+    x.lineWidth = 3; x.stroke();
+  }
+  x.beginPath(); x.arc(cx, cy, r, 0, 6.28);
+  x.fillStyle = rg(x, cx - r * .35, cy - r * .4, 3, cx, cy, r, [[0, '#FFB07A'], [.6, '#F2683A'], [1, '#C8432A']]); x.fill();
+  x.lineWidth = 4; x.strokeStyle = '#9E3218'; x.stroke();
+  eyes(x, cx, cy - r * .05, r * .38, r * .24, 'grumpy');
+  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .03; x.beginPath(); x.arc(cx, cy + r * .6, r * .2, Math.PI + .5, -.5); x.stroke();
+  return c; })();
+// virüs yapışmış mukus: hafif mor ton + köşede küçük virüs
+C.infected = C.mucus.map(m => { const [c, x] = cnv();
+  x.drawImage(m, 0, 0);
+  x.globalCompositeOperation = 'source-atop'; x.fillStyle = 'rgba(130,60,170,.28)'; x.fillRect(0, 0, TS, TS);
+  x.globalCompositeOperation = 'source-over'; x.drawImage(C.virus, TS * .5, -TS * .02, TS * .52, TS * .52);
+  return c; });
+
+/* Sıklamen yılan: baş = geriye kıvrık taç yapraklı çiçek (ileri = dokunun üstü), gövde = sap + yaprak, kuyruk = yumru */
+const PETAL_ANG = [-.78, -.39, 0, .39, .78];        // taç yapraklar geriye doğru yelpaze
+function petalPath(x, w, y0, y1) {                    // yerel +y yönünde, hafif burgulu taç yaprak
+  const L = y1 - y0;
+  x.beginPath(); x.moveTo(0, y0);
+  x.bezierCurveTo(w * 1.15, y0 + L * .2, w * 1.05, y0 + L * .72, w * .3, y1 - 1);
+  x.quadraticCurveTo(0, y1 + 3, -w * .35, y1 - 3);
+  x.bezierCurveTo(-w * .95, y0 + L * .75, -w * .9, y0 + L * .2, 0, y0);
+}
+// gri tonlu: görünüm rengiyle tint edilir, dipler koyu kalır
+C.petals = (() => { const [c, x] = cnv();
+  for (const k of [0, 4, 1, 3, 2]) {
+    x.save(); x.translate(TS / 2, TS / 2); x.rotate(-PETAL_ANG[k]);
+    petalPath(x, 19, 6, 59);
+    const g = x.createLinearGradient(0, 8, 0, 58); g.addColorStop(0, '#bdbdbd'); g.addColorStop(.45, '#efefef'); g.addColorStop(1, '#ffffff');
+    x.fillStyle = g; x.fill(); x.lineWidth = 2; x.strokeStyle = 'rgba(0,0,0,.2)'; x.stroke();
+    x.strokeStyle = 'rgba(0,0,0,.09)'; x.lineWidth = 2; x.beginPath(); x.moveTo(0, 30); x.quadraticCurveTo(3, 44, 1, 55); x.stroke();
+    x.restore();
+  }
+  return c; })();
+// sıklamene özgü koyu "göz": taç yaprak diplerinde
+C.eye = (() => { const [c, x] = cnv();
+  x.fillStyle = '#fff';
+  for (const a of PETAL_ANG) { x.save(); x.translate(TS / 2, TS / 2); x.rotate(-a); x.beginPath(); x.ellipse(0, 25, 8, 10, 0, 0, 6.28); x.fill(); x.restore(); }
+  x.beginPath(); x.arc(TS / 2, TS / 2, 23, 0, 6.28); x.fill();
+  return c; })();
+C.face2 = (() => { const [c, x] = cnv();
+  eyes(x, TS / 2, TS * .45, TS * .15, TS * .11, 'happy');
+  x.fillStyle = 'rgba(255,150,190,.6)'; for (const s of [-1, 1]) { x.beginPath(); x.ellipse(TS / 2 + s * TS * .27, TS * .6, TS * .07, TS * .045, 0, 0, 6.28); x.fill(); }
+  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .035; x.lineCap = 'round'; x.beginPath(); x.arc(TS / 2, TS * .58, TS * .09, .25, Math.PI - .25); x.stroke();
+  return c; })();
+// kalp biçimli, gümüş desenli sıklamen yaprağı; sapı alt ortada
+C.leaf = (() => { const [c, x] = cnv();
+  x.strokeStyle = '#3F8A4F'; x.lineWidth = 6; x.lineCap = 'round'; x.beginPath(); x.moveTo(64, 98); x.lineTo(64, 125); x.stroke();
+  const heart = (s) => { x.save(); x.translate(64, 64); x.scale(s, s); x.translate(-64, -64);
+    x.beginPath(); x.moveTo(64, 98); x.bezierCurveTo(42, 116, 8, 100, 14, 70); x.bezierCurveTo(20, 40, 50, 22, 64, 8);
+    x.bezierCurveTo(78, 22, 108, 40, 114, 70); x.bezierCurveTo(120, 100, 86, 116, 64, 98); x.restore(); };
+  heart(1); const g = x.createLinearGradient(0, 8, 0, 110); g.addColorStop(0, '#46A45F'); g.addColorStop(1, '#2C7442'); x.fillStyle = g; x.fill();
+  x.lineWidth = 3; x.strokeStyle = '#1F5E33'; x.stroke();
+  heart(.62); x.lineWidth = 9; x.strokeStyle = 'rgba(214,236,222,.55)'; x.stroke();          // gümüş halka
+  x.strokeStyle = 'rgba(255,255,255,.35)'; x.lineWidth = 3; x.beginPath(); x.moveTo(64, 96); x.lineTo(64, 22); x.stroke();
+  for (const s of [-1, 1]) { x.beginPath(); x.moveTo(64, 70); x.quadraticCurveTo(64 + s * 22, 58, 64 + s * 36, 64); x.stroke(); }
+  return c; })();
+// yumru: ürün özütünün geldiği yer
+C.tuber = (() => { const [c, x] = cnv();
+  x.strokeStyle = '#7A5534'; x.lineWidth = 3; x.lineCap = 'round';
+  for (const [a, l] of [[-.5, 26], [0, 32], [.45, 24], [.9, 18], [-.95, 18]]) { x.beginPath(); x.moveTo(64 + Math.sin(a) * 30, 78); x.quadraticCurveTo(64 + Math.sin(a) * 40, 78 + l * .6, 64 + Math.sin(a) * 46, 78 + l); x.stroke(); }
+  x.beginPath(); x.ellipse(64, 66, 44, 32, 0, 0, 6.28);
+  x.fillStyle = rg(x, 50, 52, 4, 64, 66, 48, [[0, '#C79563'], [.6, '#9A6B3E'], [1, '#6E4825']]); x.fill();
+  x.lineWidth = 3; x.strokeStyle = '#5A3A1E'; x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.ellipse(48, 54, 12, 6, -.4, 0, 6.28); x.fill();
+  x.fillStyle = 'rgba(90,58,30,.45)'; for (const [px, py] of [[78, 60], [56, 76], [86, 74]]) { x.beginPath(); x.arc(px, py, 2.5, 0, 6.28); x.fill(); }
+  return c; })();
+// saponin köpüğü
+C.bubble = (() => { const [c, x] = cnv();
+  x.beginPath(); x.arc(64, 64, 56, 0, 6.28);
+  x.fillStyle = rg(x, 64, 64, 20, 64, 64, 56, [[0, 'rgba(200,236,250,.15)'], [.8, 'rgba(170,224,245,.35)'], [1, 'rgba(255,255,255,.7)']]); x.fill();
+  x.lineWidth = 6; x.strokeStyle = 'rgba(110,196,226,.9)'; x.stroke();
+  x.strokeStyle = '#fff'; x.lineWidth = 7; x.lineCap = 'round'; x.beginPath(); x.arc(64, 64, 38, Math.PI * 1.1, Math.PI * 1.45); x.stroke();
+  return c; })();
+// temizlenen hücrede kısa süre açan çiçek
+C.bloom = (() => { const [c, x] = cnv(); flower(x, 64, 64, 56, '#ffffff', '#F4B81F'); return c; })();
 
 // DOM ikonları aynı dokulardan
-const ICON = { mucus: C.mucus[0], gold: C.gold, serum: C.serum, breeze: C.breeze, polyp: C.polyp[0], septum: C.septum, plug: C.plug, portal: C.portal, crust: C.crust };
+const ICON = { mucus: C.mucus[0], gold: C.gold, serum: C.serum, breeze: C.breeze, polyp: C.polyp[0], septum: C.septum, plug: C.plug, portal: C.portal, crust: C.crust, virus: C.virus, infected: C.infected[0] };
 const iconURL = {};
 for (const k in ICON) iconURL[k] = ICON[k].toDataURL();
 { const [c, x] = cnv(); x.fillStyle = '#8A5CF6'; x.beginPath(); x.arc(TS/2,TS/2,TS/2,0,6.28); x.fill(); x.drawImage(C.portal, 0, 0); iconURL.portal = c.toDataURL(); }
@@ -605,18 +396,19 @@ stageEl.prepend(app.canvas);
 app.ticker.maxFPS = 0;
 
 const T = {};
-for (const k of ['ball', 'face', 'soft', 'dot', 'gold', 'serum', 'breeze', 'septum', 'crust', 'plug', 'portal', 'fresh', 'petal']) T[k] = PIXI.Texture.from(C[k]);
+for (const k of ['ball', 'face', 'soft', 'dot', 'gold', 'serum', 'breeze', 'septum', 'crust', 'plug', 'portal', 'fresh', 'petal', 'virus', 'petals', 'eye', 'face2', 'leaf', 'tuber', 'bubble', 'bloom']) T[k] = PIXI.Texture.from(C[k]);
 T.mucus = C.mucus.map(c => PIXI.Texture.from(c));
+T.infected = C.infected.map(c => PIXI.Texture.from(c));
 T.polyp = C.polyp.map(c => PIXI.Texture.from(c));
 
 const petalLayer = new PIXI.Container();
 const board = new PIXI.Container();
 app.stage.addChild(petalLayer, board);
 const shadowG = new PIXI.Graphics(), baseG = new PIXI.Graphics(), rimG = new PIXI.Graphics();
-const cleanLayer = new PIXI.Container(), gateLayer = new PIXI.Container(), portalLayer = new PIXI.Container();
-const obsLayer = new PIXI.Container(), itemLayer = new PIXI.Container(), moverLayer = new PIXI.Container();
+const cleanLayer = new PIXI.Container(), bloomLayer = new PIXI.Container(), gateLayer = new PIXI.Container(), portalLayer = new PIXI.Container();
+const obsLayer = new PIXI.Container(), itemLayer = new PIXI.Container(), moverLayer = new PIXI.Container(), virusLayer = new PIXI.Container();
 const snakeLayer = new PIXI.Container(), maskG = new PIXI.Graphics(), fxLayer = new PIXI.Container(), popLayer = new PIXI.Container(), flashG = new PIXI.Graphics();
-board.addChild(shadowG, baseG, cleanLayer, rimG, portalLayer, gateLayer, obsLayer, itemLayer, moverLayer, snakeLayer, maskG, fxLayer, popLayer, flashG);
+board.addChild(shadowG, baseG, cleanLayer, bloomLayer, rimG, portalLayer, gateLayer, obsLayer, itemLayer, moverLayer, virusLayer, snakeLayer, maskG, fxLayer, popLayer, flashG);
 snakeLayer.mask = maskG; flashG.alpha = 0;
 
 // Arka planda süzülen sıklamen yaprakları (12 sprite)
@@ -633,13 +425,22 @@ const gateGlow = new PIXI.Sprite(T.soft), gateRing = new PIXI.Sprite(T.portal);
 gateGlow.anchor.set(.5); gateRing.anchor.set(.5); gateGlow.tint = 0x2FD6BE; gateRing.tint = 0x0E9C88;
 gateLayer.addChild(gateGlow, gateRing); gateLayer.visible = false;
 
-const bodyPool = [];
-function bodySprite(i) { let s = bodyPool[i]; if (!s) { s = new PIXI.Sprite(T.ball); s.anchor.set(.5); snakeLayer.addChildAt(s, 0); bodyPool[i] = s; } return s; }
-const headBase = new PIXI.Sprite(T.ball), headFace = new PIXI.Sprite(T.face);
-headBase.anchor.set(.5); headFace.anchor.set(.5); snakeLayer.addChild(headBase, headFace);
+const leafLayer = new PIXI.Container(), bodyLayer = new PIXI.Container(), lumpLayer = new PIXI.Container();   // lump: gövdede taşınan virüsler
+const bodyPool = [], leafPool = [], lumpPool = [];
+function bodySprite(i) { let s = bodyPool[i]; if (!s) { s = new PIXI.Sprite(T.ball); s.anchor.set(.5); bodyLayer.addChild(s); bodyPool[i] = s; } return s; }
+function leafSprite(i) { let s = leafPool[i]; if (!s) { s = new PIXI.Sprite(T.leaf); s.anchor.set(.5, .97); leafLayer.addChild(s); leafPool[i] = s; } return s; }
+const tuber = new PIXI.Sprite(T.tuber), headPetals = new PIXI.Sprite(T.petals), headEye = new PIXI.Sprite(T.eye);
+const headBase = new PIXI.Sprite(T.ball), headFace = new PIXI.Sprite(T.face2);
+for (const s of [tuber, headPetals, headEye, headBase, headFace]) s.anchor.set(.5);
+snakeLayer.addChild(leafLayer, bodyLayer, tuber, lumpLayer, headPetals, headEye, headBase, headFace);
+
+const BLOOMS = [];
+for (let i = 0; i < 40; i++) { const s = new PIXI.Sprite(T.bloom); s.anchor.set(.5); s.visible = false; bloomLayer.addChild(s); BLOOMS.push({ s, life: 0 }); }
+const BUBBLES = [];
 
 const PARTS = [];
-for (let i = 0; i < 200; i++) { const s = new PIXI.Sprite(T.dot); s.anchor.set(.5); s.visible = false; fxLayer.addChild(s); PARTS.push({ s, vx: 0, vy: 0, life: 0, max: 1, size: 1 }); }
+for (let i = 0; i < 200; i++) { const s = new PIXI.Sprite(T.dot); s.anchor.set(.5); s.visible = false; fxLayer.addChild(s); PARTS.push({ s, vx: 0, vy: 0, vr: 0, life: 0, max: 1, size: 1 }); }
+for (let i = 0; i < 70; i++) { const s = new PIXI.Sprite(T.bubble); s.anchor.set(.5); s.visible = false; fxLayer.addChild(s); BUBBLES.push({ s, vx: 0, vy: 0, life: 0, max: 1, size: 1, ph: 0 }); }
 const POPS = [];
 for (let i = 0; i < 8; i++) {
   const t = new PIXI.BitmapText({ text: '+0', style: { fontFamily: 'Baloo 2, Arial', fontSize: 34, fontWeight: '800', fill: 0xffffff, stroke: { color: 0x3A1530, width: 6 } } });
@@ -664,7 +465,8 @@ let shake = 0, stepCount = 0;
 const obstacle = new Uint8Array(COLS * ROWS), cleaned = new Uint8Array(COLS * ROWS), scratch = new Uint8Array(COLS * ROWS);
 let cleanedCount = 0, freeCells = 1;
 const cleanAnims = [];
-let items = [], movers = [], portals = [];
+let items = [], movers = [], portals = [], viruses = [];
+let carriedAt = [], hurtUntil = 0, virusWait = 0;   // carriedAt: virüslü mukusun yutulduğu adım (gövdede ilerler)
 let lv = null;                         // bölüm istatistikleri
 let gameSneezes = 0;
 
@@ -744,9 +546,11 @@ function setupBoard(c) {
   freeCells = 0; for (let i = 0; i < obstacle.length; i++) if (!obstacle[i] && !isPortal(i % COLS, (i / COLS) | 0)) freeCells++;
   placeObstacleSprites(); placePortals();
 
-  cleaned.fill(0); cleanedCount = 0; cleanAnims.length = 0;
+  cleaned.fill(0); cleanedCount = 0; cleanAnims.length = 0; freshCell.fill(0);
+  for (const b of BLOOMS) { b.life = 0; b.s.visible = false; }
   for (const s of cleanSprites) { s.visible = false; }
   for (const it of items) it.s.destroy(); items = [];
+  for (const v of viruses) v.s.destroy(); viruses = []; carriedAt = []; hurtUntil = 0; virusWait = 0;
   len = 4; grow = 0; dir = moveDir = 0; queue.length = 0; stepCount = 0;
   for (let i = 0; i < len; i++) { bx[i] = 9; by[i] = ROWS - 4 + i; px[i] = bx[i]; py[i] = by[i]; }
   prevLen = len;
@@ -754,8 +558,9 @@ function setupBoard(c) {
   target = c.target; eaten = 0; exitOpen = false; gateLayer.visible = false;
   combo = 0; lastEat = -1e9; boostUntil = slowUntil = breezeUntil = 0; acc = 0;
   levelStart = gameTime;
-  lv = { sneezes: 0, golds: 0, hardened: 0, maxLen: len };
+  lv = { sneezes: 0, golds: 0, hardened: 0, maxLen: len, trapped: 0, carried: 0, expelled: 0, replicated: 0, hits: 0 };
   spawn('mucus'); spawn('mucus');
+  for (let i = 0; i < (c.virus || 0); i++) spawnVirus();
   renderSnake(1, 16, performance.now());
 }
 function placePortals() {
@@ -771,7 +576,7 @@ function placePortals() {
 function bodyAt(x, y, skipTail) { const n = skipTail ? len - 1 : len; for (let i = 0; i < n; i++) if (bx[i] === x && by[i] === y) return true; return false; }
 function itemAt(x, y) { for (const it of items) if (it.x === x && it.y === y) return it; return null; }
 function moverAt(x, y) { for (const m of movers) if (m.x === x && m.y === y) return m; return null; }
-function occupied(x, y) { return obstacle[y * COLS + x] || isPortal(x, y) || bodyAt(x, y) || itemAt(x, y) || moverAt(x, y); }
+function occupied(x, y) { return obstacle[y * COLS + x] || isPortal(x, y) || bodyAt(x, y) || itemAt(x, y) || moverAt(x, y) || virusAt(x, y); }
 
 function spawn(type) {
   for (let pass = 0; pass < 2; pass++) {
@@ -784,10 +589,10 @@ function spawn(type) {
     }
     if (!cand.length) continue;
     const k = ((Math.random() * cand.length / 2) | 0) * 2;
-    const tex = type === 'mucus' ? T.mucus[(Math.random() * 3) | 0] : T[type];
+    const vr = (Math.random() * 3) | 0, tex = type === 'mucus' ? T.mucus[vr] : T[type];
     const s = new PIXI.Sprite(tex); s.anchor.set(.5); itemLayer.addChild(s);
     const life = type === 'gold' ? 6000 : type === 'serum' || type === 'breeze' ? 8000 : Infinity;
-    const it = { type, x: cand[k], y: cand[k + 1], s, born: gameTime, life, ph: Math.random() * 6.28, pop: 0 };
+    const it = { type, x: cand[k], y: cand[k + 1], s, born: gameTime, life, ph: Math.random() * 6.28, pop: 0, var: vr, infected: false };
     placeItem(it, true); items.push(it);
     return it;
   }
@@ -811,7 +616,7 @@ function openExit() {
   opts.sort((a, b) => d(b) - d(a));
   [exitX, exitY] = opts[(Math.random() * Math.min(12, opts.length)) | 0];
   gateLayer.visible = true; placeGate();
-  for (const it of items.slice()) if (it.type === 'mucus') removeItem(it);
+  for (const it of items.slice()) if (it.type === 'mucus' && !it.infected) removeItem(it);   // virüslü olanlar kalır, hâlâ taşınabilir
   callout('Ostium açıldı!', 'Akışı parlayan çıkışa götür'); sfx('open'); hudBar();
 }
 function placeGate() {
@@ -834,16 +639,20 @@ function advance(d, g, tx, ty) {
 }
 function step() {
   stepCount++;
-  if (state === 'exiting') { advance(exitDir, false); stepMovers(); if (++exitSteps > len + 2) finishLevel(); return; }
+  if (state === 'exiting') { advance(exitDir, false); vacated(px[prevLen - 1], py[prevLen - 1]); stepMovers(); stepViruses(); if (++exitSteps > len + 2) finishLevel(); return; }
   if (mode === 'demo') dir = botDir();
   else if (queue.length) dir = queue.shift();
   let nx = bx[0] + DX[dir], ny = by[0] + DY[dir];
   if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) {
     if (exitOpen && nx === exitX && ny === exitY) {
       state = 'exiting'; exitDir = moveDir = dir; exitSteps = 0;
-      const bonus = len * 5; score += bonus; hudScore();
+      const bonus = len * 5 + lv.carried * 40 * (1 + levelIdx); score += bonus; hudScore();
       popup('+' + bonus, (bx[0] + .5) * cell, (by[0] + .5) * cell, 0x7CF2DD);
-      burst((nx + .5) * cell, (ny + .5) * cell, 26, 0x2FD6BE);
+      if (lv.carried) {
+        lv.expelled = lv.carried; prog.viruses += lv.carried; if (prog.viruses >= 20) award('virus20');
+        callout(`${lv.carried} virüs dışarı atıldı`, 'Akış onları ostiumdan taşıdı');
+      }
+      burst((nx + .5) * cell, (ny + .5) * cell, 26, 0x2FD6BE); petalBurst((bx[0] + .5) * cell, (by[0] + .5) * cell, 22);
       advance(dir, false); sfx('exit'); return;
     }
     return die('wall');
@@ -857,14 +666,17 @@ function step() {
   if (moverAt(nx, ny)) return die('plug');
   const willGrow = grow > 0;
   for (let i = 1; i < (willGrow ? len : len - 1); i++) if (bx[i] === nx && by[i] === ny) return die('self');
+  const hitV = gameTime >= hurtUntil ? virusAt(nx, ny) : null;
   advance(dir, willGrow, nx, ny); moveDir = dir;
+  if (!willGrow) vacated(px[prevLen - 1], py[prevLen - 1]);
   if (willGrow) grow--;
   if (len > lv.maxLen) lv.maxLen = len;
   if (teleport) { sfx('portal'); burst((nx + .5) * cell, (ny + .5) * cell, 12, 0xB79BFF); if (mode !== 'demo') { prog.portals++; if (prog.portals >= 10) award('portal10'); } }
   cleanCell(nx, ny);
   const it = itemAt(nx, ny); if (it) consume(it);
+  if (hitV) virusHit(hitV);
   if (gameTime < breezeUntil) pullItems();
-  stepMovers();
+  stepMovers(); stepViruses(); expelTail();
   if (mode !== 'demo' && len >= 40) award('len40');
   if (mode === 'demo' && len > 30) setupBoard(DEMO);
 }
@@ -872,7 +684,7 @@ function stepMovers() {
   for (const m of movers) {
     m.px = m.x; m.py = m.y;
     if (stepCount % 2) continue;
-    const blocked = x => x < 0 || x >= COLS || obstacle[m.y * COLS + x] || isPortal(x, m.y) || bodyAt(x, m.y) || itemAt(x, m.y) || moverAt(x, m.y);
+    const blocked = x => x < 0 || x >= COLS || obstacle[m.y * COLS + x] || isPortal(x, m.y) || bodyAt(x, m.y) || itemAt(x, m.y) || moverAt(x, m.y) || virusAt(x, m.y);
     let nx = m.x + m.dx;
     if (blocked(nx)) { m.dx = -m.dx; nx = m.x + m.dx; if (blocked(nx)) continue; }
     m.x = nx;
@@ -897,18 +709,23 @@ function pullItems() {
 
 function consume(it) {
   const cx = (it.x + .5) * cell, cy = (it.y + .5) * cell;
+  headPulse = 1;
   const tier = mode === 'endless' ? 1 + Math.floor(eaten / 5) : 1 + levelIdx;
   if (it.type === 'mucus') {
     eaten++; grow += 2;
     combo = (gameTime - lastEat < COMBO_WINDOW) ? combo + 1 : 1; lastEat = gameTime;
     let pts = 10 * tier + (combo > 1 ? combo * 5 : 0);
-    burst(cx, cy, 14, 0xC3CF3E); sfx('eat');
+    if (it.infected) {
+      lv.carried++; carriedAt.push(stepCount); pts += 20 * tier;
+      if (lv.carried === 1) callout('Virüs yakalandı!', mode === 'endless' ? 'Akış onu kuyruktan dışarı atacak' : 'Çıkışa taşı, bonus kazan');
+    }
+    burst(cx, cy, 7, 0xC3CF3E); foam(cx, cy, 8, .6); sfx('eat');
     if (mode !== 'demo') award('first');
     if (combo >= 3 && combo % 3 === 0) {
       boostUntil = gameTime + 1400; shake = REDUCED || mode === 'demo' ? 0 : 9; pts += 25 * tier;
       lv.sneezes++; gameSneezes++;
       if (mode !== 'demo') { callout('Hapşırma refleksi!', 'Akış bir anlığına hızlandı'); if (gameSneezes >= 5) award('sneeze5'); }
-      sfx('sneeze'); burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 30, 0xF06AAE);
+      sfx('sneeze'); burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 18, 0xF06AAE); petalBurst((bx[0] + .5) * cell, (by[0] + .5) * cell, 12);
       if (mode !== 'demo' && navigator.vibrate) try { navigator.vibrate(25); } catch {}
     }
     score += pts; if (mode !== 'demo') popup('+' + pts, cx, cy, 0xFFFFFF);
@@ -944,12 +761,113 @@ function harden(it) {
   if (eaten + countType('mucus') < target) spawn('mucus');
 }
 
+/* =========================================================================
+   VİRÜSLER: mukusa yapışır, akışla dışarı taşınır (akış virüsü yok etmez)
+   ========================================================================= */
+function virusAt(x, y) { for (const v of viruses) if (v.x === x && v.y === y) return v; return null; }
+function virusCanEnter(x, y) {
+  if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return false;
+  if (obstacle[y * COLS + x] || isPortal(x, y) || bodyAt(x, y) || moverAt(x, y) || virusAt(x, y)) return false;
+  const it = itemAt(x, y); return !it || (it.type === 'mucus' && !it.infected);
+}
+const emptyCell = (x, y) => virusCanEnter(x, y) && !itemAt(x, y);
+function addVirus(x, y) {
+  const s = new PIXI.Sprite(T.virus); s.anchor.set(.5); virusLayer.addChild(s);
+  const v = { x, y, px: x, py: y, s, d: (Math.random() * 4) | 0, off: (Math.random() * 4) | 0, ph: Math.random() * 6.28, rep: gameTime + (cfg.replicate || 0), pop: 0 };
+  viruses.push(v); return v;
+}
+function spawnVirus() {
+  const cand = [];
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++)
+    if (emptyCell(x, y) && Math.abs(x - bx[0]) + Math.abs(y - by[0]) >= 7 && !movers.some(m => m.y === y)) cand.push(x, y);
+  if (!cand.length) return null;
+  const k = ((Math.random() * cand.length / 2) | 0) * 2;
+  return addVirus(cand[k], cand[k + 1]);
+}
+function removeVirus(v) { v.s.destroy(); const i = viruses.indexOf(v); if (i >= 0) viruses.splice(i, 1); }
+function stepViruses() {
+  const every = cfg.virusEvery || 2;
+  for (const v of viruses.slice()) {
+    v.px = v.x; v.py = v.y;
+    if ((stepCount + v.off) % every) continue;
+    const opts = [];
+    for (let d = 0; d < 4; d++) if (virusCanEnter(v.x + DX[d], v.y + DY[d])) opts.push(d);
+    if (!opts.length) continue;
+    let d = -1, m = null, md = 9;            // 8 hücre içindeki en yakın temiz mukusa yönel
+    for (const it of items) if (it.type === 'mucus' && !it.infected) { const k = Math.abs(it.x - v.x) + Math.abs(it.y - v.y); if (k < md) { md = k; m = it; } }
+    if (m && Math.random() < .7) {
+      const near = opts.filter(o => Math.abs(v.x + DX[o] - m.x) + Math.abs(v.y + DY[o] - m.y) < md);
+      if (near.length) d = near[(Math.random() * near.length) | 0];
+    }
+    if (d < 0) {
+      const fwd = opts.filter(o => o !== (v.d + 2) % 4), pool = fwd.length ? fwd : opts;
+      d = pool.includes(v.d) && Math.random() < .55 ? v.d : pool[(Math.random() * pool.length) | 0];
+    }
+    v.d = d; v.x += DX[d]; v.y += DY[d];
+    const it = itemAt(v.x, v.y); if (it) trapVirus(v, it);
+  }
+}
+function trapVirus(v, it) {
+  it.infected = true; it.s.texture = T.infected[it.var]; it.pop = .4;
+  burst((it.x + .5) * cell, (it.y + .5) * cell, 12, 0xF2683A); sfx('trap'); removeVirus(v);
+  if (!lv.trapped++) callout('Virüs mukusa yapıştı', 'Topla ve dışarı taşı');
+}
+function virusHit(v) {
+  hurtUntil = gameTime + 1500; lv.hits++;
+  const lost = Math.min(3, len - 4);
+  if (lost > 0) { burst((bx[len - 1] + .5) * cell, (by[len - 1] + .5) * cell, 10, 0xF2683A); len -= lost; prevLen = Math.min(prevLen, len); }
+  burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 18, 0xF2683A);
+  flashG.alpha = .22; shake = REDUCED || mode === 'demo' ? 0 : 6; sfx('hurt');
+  if (mode !== 'demo' && navigator.vibrate) try { navigator.vibrate(30); } catch {}
+  callout('Virüse çarptın', 'Drenaj kısaldı. Virüsü mukusa yakalat');
+  removeVirus(v); spawnVirus();          // virüs sekip uzağa savrulur
+}
+// Serbest akışta çıkış yok: taşınan virüs kuyruğa ulaşınca dışarı atılır
+function expelTail() {
+  if (mode !== 'endless') return;
+  while (carriedAt.length && 1 + stepCount - carriedAt[0] >= len) {
+    carriedAt.shift(); lv.expelled++; prog.viruses++; if (prog.viruses >= 20) award('virus20');
+    burst((bx[len - 1] + .5) * cell, (by[len - 1] + .5) * cell, 10, 0x2FD6BE); foam((bx[len - 1] + .5) * cell, (by[len - 1] + .5) * cell, 5, .5);
+  }
+}
+function updateViruses(dt) {
+  if (!cfg.virus) return;
+  if (cfg.replicate) for (const v of viruses.slice()) {
+    if (cleaned[v.y * COLS + v.x]) { v.rep += dt; continue; }   // temiz dokuda çoğalamaz
+    if (gameTime < v.rep) continue;
+    v.rep = gameTime + cfg.replicate;
+    if (viruses.length >= cfg.virusMax) continue;
+    const opts = [];
+    for (let d = 0; d < 4; d++) if (emptyCell(v.x + DX[d], v.y + DY[d])) opts.push(d);
+    if (!opts.length) continue;
+    const d = opts[(Math.random() * opts.length) | 0], n = addVirus(v.x + DX[d], v.y + DY[d]);
+    n.px = v.x; n.py = v.y; lv.replicated++;
+    burst((n.x + .5) * cell, (n.y + .5) * cell, 10, 0xF2683A); sfx('replicate');
+    if (lv.replicated === 1) callout('Virüs çoğaldı', 'Temizlenmiş dokuda çoğalamazlar');
+  }
+  if (cfg.respawn && !viruses.length) {
+    if (!virusWait) virusWait = gameTime + cfg.respawn;
+    else if (gameTime >= virusWait) { virusWait = 0; spawnVirus(); }
+  }
+}
+function renderViruses(a, dt, now) {
+  for (const v of viruses) {
+    v.pop = Math.min(1, v.pop + dt / 280);
+    const popS = v.pop < 1 ? 1 - Math.pow(1 - v.pop, 3) + Math.sin(v.pop * Math.PI) * .25 : 1;
+    const left = v.rep - gameTime;     // çoğalmadan hemen önce şişip titrer
+    const swell = cfg.replicate && left < 1500 && !cleaned[v.y * COLS + v.x] ? (1 - Math.max(0, left) / 1500) * .22 * (.6 + .4 * Math.sin(now * .03)) : 0;
+    v.s.position.set((v.px + (v.x - v.px) * a + .5) * cell, (v.py + (v.y - v.py) * a + .5) * cell);
+    v.s.width = v.s.height = cell * 1.05 * popS * (1 + .05 * Math.sin(now * .006 + v.ph) + swell);
+    v.s.rotation = Math.sin(now * .002 + v.ph) * .5;
+  }
+}
+
 function cleanCell(x, y, instant) {
   if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return;
   const i = y * COLS + x; if (cleaned[i] || isPortal(x, y)) return;
   cleaned[i] = 1; cleanedCount++;
   const s = cleanSprites[i]; s.visible = true;
-  if (instant) { s.width = s.height = cell * .94; s.alpha = 1; } else { s.alpha = 0; cleanAnims.push({ s, t: 0 }); }
+  if (instant) { s.width = s.height = cell * .94; s.alpha = 1; } else { s.alpha = 0; cleanAnims.push({ s, t: 0 }); freshCell[i] = 1; }
 }
 
 /* Demo botu: hedefe yönel, sıkışacağı yönlerden flood-fill ile kaçın */
@@ -1006,9 +924,10 @@ function die(reason) {
 const GOAL_TEXT = {
   clean: v => `Temiz alan en az %${v}`, time: v => `${v} saniyenin altında bitir`, sneeze: v => `${v} hapşırma refleksi yap`,
   gold: v => `${v} altın sıklamen topla`, len: v => `Drenajı ${v} uzunluğa ulaştır`, nohard: () => 'Hiçbir mukus sertleşmesin',
+  virus: v => `${v} virüsü dışarı taşı`, noinfect: () => 'Hiçbir virüs çoğalmasın',
 };
 function evalGoal([t, v], st) {
-  return { clean: st.clean >= v, time: st.time <= v, sneeze: st.sneezes >= v, gold: st.golds >= v, len: st.maxLen >= v, nohard: st.hardened === 0 }[t];
+  return { clean: st.clean >= v, time: st.time <= v, sneeze: st.sneezes >= v, gold: st.golds >= v, len: st.maxLen >= v, nohard: st.hardened === 0, virus: st.expelled >= v, noinfect: st.replicated === 0 }[t];
 }
 function finishLevel() {
   state = 'result'; gateLayer.visible = false;
@@ -1034,6 +953,7 @@ function finishLevel() {
   got.forEach((g, i) => g && setTimeout(() => sfx('star'), 200 + i * 180));
   const goals = [['Bölümü tamamla', true], [GOAL_TEXT[L.obj[0][0]](L.obj[0][1]), got[1]], [GOAL_TEXT[L.obj[1][0]](L.obj[1][1]), got[2]]];
   $('reGoals').innerHTML = goals.map(([t, g]) => `<li><span class="st ${g ? 'on' : ''}">★</span>${t}<span class="ok ${g ? 'y' : 'n'}">${g ? '✓' : '✗'}</span></li>`).join('');
+  $('reVirusWrap').style.display = L.virus ? '' : 'none'; $('reVirus').textContent = lv.expelled;
   $('reScore').textContent = score; $('reClean').textContent = st.clean + '%'; $('reTime').textContent = st.time + ' sn';
   $('reFactTitle').textContent = newFact ? 'Yeni bilgi kartı açıldı' : 'Biliyor muydunuz?';
   $('reFact').querySelector('.em').textContent = FACTS[levelIdx][0];
@@ -1051,9 +971,43 @@ function burst(x, y, n, color) {
   for (let k = 0; k < n; k++) {
     const p = PARTS[partCursor = (partCursor + 1) % PARTS.length];
     const a = Math.random() * 6.28, sp = (.04 + Math.random() * .15) * cell;
-    p.s.visible = true; p.s.tint = color; p.s.position.set(x, y);
+    p.s.visible = true; p.s.tint = color; p.s.position.set(x, y); p.s.texture = T.dot; p.s.rotation = 0; p.vr = 0;
     p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp; p.max = p.life = 350 + Math.random() * 380; p.size = cell * (.14 + Math.random() * .22);
   }
+}
+// taç yaprak yağmuru (çıkış, hapşırma)
+function petalBurst(x, y, n) {
+  const c = skin.classic ? 0xF06AAE : skin.petal === -1 ? null : skin.petal;
+  for (let k = 0; k < n; k++) {
+    const p = PARTS[partCursor = (partCursor + 1) % PARTS.length];
+    const a = Math.random() * 6.28, sp = (.05 + Math.random() * .16) * cell;
+    p.s.visible = true; p.s.texture = T.petal; p.s.tint = c ?? hsl(Math.random()); p.s.position.set(x, y);
+    p.s.rotation = Math.random() * 6.28; p.vr = (Math.random() - .5) * .2;
+    p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp; p.max = p.life = 600 + Math.random() * 500; p.size = cell * (.35 + Math.random() * .3);
+  }
+}
+// saponin köpüğü: yavaşça yükselip patlayan baloncuklar
+let bubCursor = 0;
+function foam(x, y, n, spread) {
+  for (let k = 0; k < n; k++) {
+    const b = BUBBLES[bubCursor = (bubCursor + 1) % BUBBLES.length];
+    b.s.visible = true; b.s.position.set(x + (Math.random() - .5) * spread * cell, y + (Math.random() - .5) * spread * cell);
+    b.vx = (Math.random() - .5) * .012 * cell; b.vy = -(.006 + Math.random() * .014) * cell;
+    b.max = b.life = 650 + Math.random() * 550; b.size = cell * (.16 + Math.random() * .26); b.ph = Math.random() * 6.28;
+  }
+}
+// temizlenen hücre, kuyruk oradan ayrılınca kısa süre çiçek açar
+const freshCell = new Uint8Array(COLS * ROWS);
+let bloomCursor = 0;
+function vacated(x, y) {
+  if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return;
+  const i = y * COLS + x;
+  if (Math.random() < .22) foam((x + .5) * cell, (y + .5) * cell, 1, .4);
+  if (!freshCell[i]) return;
+  freshCell[i] = 0;
+  const b = BLOOMS[bloomCursor = (bloomCursor + 1) % BLOOMS.length];
+  b.s.visible = true; b.s.position.set((x + .5) * cell, (y + .5) * cell); b.s.rotation = Math.random() * 6.28;
+  b.s.tint = skin.classic || skin.petal === -1 ? 0xFFC2DD : mixc(rgb(skin.petal), WHITE, .45); b.life = 520;
 }
 let popCursor = 0;
 function popup(txt, x, y, color) {
@@ -1089,8 +1043,9 @@ function rgb(c) { return [(c >> 16) & 255, (c >> 8) & 255, c & 255]; }
 function mixc(a, b, t) { return ((a[0] + (b[0] - a[0]) * t) << 16) | ((a[1] + (b[1] - a[1]) * t) << 8) | (a[2] + (b[2] - a[2]) * t); }
 function hsl(h) { const f = n => { const k = (n + h * 12) % 12; return Math.round(255 * (.62 - .38 * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); }; return (f(0) << 16) | (f(8) << 8) | f(4); }
 const WHITE = [255, 255, 255], BOOSTC = rgb(0xF06AAE);
-let skinBody = rgb(SKINS[prog.skin].body), skinBodyRaw = SKINS[prog.skin].body;
-let headRotTarget = 0;
+const STEM = rgb(0x4BA85E), STEM_HI = rgb(0x9EDC8C), WILT = rgb(0x9C8F96);
+let skin = SKINS[0], skinBody = WHITE;
+let headRot = 0, headPulse = 0;
 
 function renderSnake(alpha, dt, now) {
   for (let i = 0; i < len; i++) {
@@ -1098,8 +1053,8 @@ function renderSnake(alpha, dt, now) {
     if (Math.abs(fx - bx[i]) + Math.abs(fy - by[i]) > 1.5) { fx = bx[i]; fy = by[i]; }   // kanal geçişi: sıçra
     ix[i] = fx + (bx[i] - fx) * alpha; iy[i] = fy + (by[i] - fy) * alpha;
   }
-  const count = len * 2 - 1, boosting = gameTime < boostUntil;
-  const rainbow = skinBodyRaw === -1, demo = mode === 'demo' || state === 'demo';
+  const count = len * 2 - 1, boosting = gameTime < boostUntil, hurt = gameTime < hurtUntil;
+  const flower = !skin.classic, rainbow = skin.petal === -1;
   let used = 0;
   for (let k = count - 1; k >= 1; k--) {
     const i = k >> 1; let x, y;
@@ -1109,16 +1064,61 @@ function renderSnake(alpha, dt, now) {
     } else { x = ix[i]; y = iy[i]; }
     const t = k / count, s = bodySprite(used++);
     s.visible = true; s.position.set((x + .5) * cell, (y + .5) * cell);
-    s.width = s.height = cell * (.9 - .36 * t);
+    s.width = s.height = cell * (flower ? .7 - .26 * t : .9 - .36 * t);
     const w = .5 + .5 * Math.sin(now * .008 - k * .45);
-    s.tint = boosting ? mixc(BOOSTC, WHITE, w * .4) : rainbow ? hsl(((now * .0002) + k * .02) % 1) : mixc(skinBody, WHITE, w * .22);
+    s.tint = boosting ? mixc(BOOSTC, WHITE, w * .4) : flower ? mixc(STEM, STEM_HI, w * .45) : mixc(skinBody, WHITE, w * .22);
   }
   for (let j = used; j < bodyPool.length; j++) bodyPool[j].visible = false;
+  // her 3 segmentte bir, sırayla sağa sola açılan yaprak
+  let nl = 0;
+  if (flower) for (let i = 3; i < len - 1; i += 3) {
+    const tx = ix[i - 1] - ix[i + 1], ty = iy[i - 1] - iy[i + 1];
+    if (Math.abs(tx) + Math.abs(ty) > 3) continue;                      // kanal geçişi
+    const s = leafSprite(nl++), side = (i / 3) & 1 ? 1 : -1, sz = cell * (1.5 - .55 * i / len);
+    s.visible = true; s.position.set((ix[i] + .5) * cell, (iy[i] + .5) * cell);
+    s.rotation = Math.atan2(ty, tx) + side * (Math.PI / 2 + .6) + Math.PI / 2 + Math.sin(now * .004 + i) * .12;
+    s.width = sz * .85; s.height = sz; s.tint = hurt ? mixc(WHITE, WILT, .5) : 0xffffff;
+  }
+  for (let j = nl; j < leafPool.length; j++) leafPool[j].visible = false;
+  tuber.visible = flower;
+  if (flower) {
+    const e = len - 1;
+    tuber.position.set((ix[e] + .5) * cell, (iy[e] + .5) * cell);
+    tuber.rotation = Math.atan2(iy[e - 1] - iy[e], ix[e - 1] - ix[e]) + Math.PI / 2;   // kökler geriye
+    tuber.width = tuber.height = cell * 1.2;
+  }
+  // yutulan virüs gövdede kuyruğa doğru ilerler, en eskisi en arkada
+  for (let j = 0; j < carriedAt.length; j++) {
+    let s = lumpPool[j]; if (!s) { s = new PIXI.Sprite(T.virus); s.anchor.set(.5); lumpLayer.addChild(s); lumpPool[j] = s; }
+    const i = Math.max(1, Math.min(len - 1 - j, 1 + stepCount - carriedAt[j]));
+    s.visible = true; s.position.set((ix[i] + .5) * cell, (iy[i] + .5) * cell);
+    s.width = s.height = cell * .58; s.rotation = now * .002 + j * 1.3;
+  }
+  for (let j = carriedAt.length; j < lumpPool.length; j++) lumpPool[j].visible = false;
+  snakeLayer.alpha = hurt ? (Math.sin(now * .04) > 0 ? 1 : .45) : 1;
   const hx = (ix[0] + .5) * cell, hy = (iy[0] + .5) * cell;
-  headBase.position.set(hx, hy); headBase.width = headBase.height = cell * 1.2;
-  headBase.tint = SKINS[prog.skin].head;
   const lx = DX[moveDir] * cell * .1, ly = DY[moveDir] * cell * .08;
-  headFace.position.set(hx + lx, hy + ly); headFace.width = headFace.height = cell * 1.2;
+  headPetals.visible = headEye.visible = flower;
+  headPulse = Math.max(0, headPulse - dt * .004);
+  if (flower) {
+    // taç yapraklar boyundan başa giden yönün tersine savrulur
+    const vx = ix[0] - ix[1], vy = iy[0] - iy[1], m = Math.abs(vx) + Math.abs(vy);
+    const target = m > .05 && m < 1.5 ? Math.atan2(vy, vx) + Math.PI / 2 : Math.atan2(DY[moveDir], DX[moveDir]) + Math.PI / 2;
+    const d = Math.atan2(Math.sin(target - headRot), Math.cos(target - headRot));
+    headRot += d * Math.min(1, dt * .025);
+    const open = (boosting ? 1.16 : 1) * (hurt ? .84 : 1) * (1 + headPulse * .1), fl = Math.sin(now * .018) * .045;
+    const petalC = rainbow ? hsl((now * .0003) % 1) : skin.petal;
+    for (const s of [headPetals, headEye]) {
+      s.position.set(hx, hy); s.rotation = headRot;
+      s.width = cell * 3.1 * open * (1 + fl); s.height = cell * 3.1 * open * (1 - fl * .6);
+    }
+    headPetals.tint = hurt ? mixc(rgb(petalC), WILT, .55) : petalC; headEye.tint = skin.eye;
+    headBase.tint = skin.disc; headBase.width = headBase.height = cell * 1.0;
+  } else {
+    headBase.tint = skin.head; headBase.width = headBase.height = cell * 1.2;
+  }
+  headBase.position.set(hx, hy);
+  headFace.position.set(hx + lx, hy + ly); headFace.width = headFace.height = cell * (flower ? 1.0 : 1.2);
   headFace.scale.x = Math.abs(headFace.scale.x) * (moveDir === 3 ? -1 : 1);
 }
 
@@ -1153,8 +1153,22 @@ function updateFx(dt, now) {
   for (const p of PARTS) {
     if (p.life <= 0) continue;
     p.life -= dt; if (p.life <= 0) { p.s.visible = false; continue; }
-    const f = dt / 16.67; p.s.x += p.vx * f; p.s.y += p.vy * f; p.vx *= Math.pow(.93, f); p.vy *= Math.pow(.93, f);
+    const f = dt / 16.67; p.s.x += p.vx * f; p.s.y += p.vy * f; p.s.rotation += p.vr * f; p.vx *= Math.pow(.93, f); p.vy *= Math.pow(.93, f);
     const k = p.life / p.max; p.s.alpha = k; p.s.width = p.s.height = p.size * (.4 + .6 * k);
+  }
+  for (const b of BUBBLES) {
+    if (b.life <= 0) continue;
+    b.life -= dt; if (b.life <= 0) { b.s.visible = false; continue; }
+    const f = dt / 16.67, k = b.life / b.max; b.s.x += (b.vx + Math.sin(now * .006 + b.ph) * .004 * cell) * f; b.s.y += b.vy * f;
+    const popK = k < .15 ? 1 + (1 - k / .15) * .35 : 1;          // patlarken genişleyip kaybolur
+    b.s.width = b.s.height = b.size * (.6 + .4 * Math.min(1, (1 - k) * 4)) * popK; b.s.alpha = k < .15 ? k / .15 : .9;
+  }
+  for (const b of BLOOMS) {
+    if (b.life <= 0) continue;
+    b.life -= dt; if (b.life <= 0) { b.s.visible = false; continue; }
+    const k = 1 - b.life / 520;
+    b.s.width = b.s.height = cell * .62 * Math.min(1, k * 3.2) * (1 + .1 * Math.sin(k * Math.PI));
+    b.s.alpha = k < .55 ? .95 : .95 * (1 - (k - .55) / .45); b.s.rotation += dt * .002;
   }
   for (const p of POPS) { if (p.life <= 0) continue; p.life -= dt; p.t.y -= dt * .045 * (cell / 24); p.t.alpha = Math.min(1, p.life / 300); if (p.life <= 0) p.t.visible = false; }
   if (flashG.alpha > 0) flashG.alpha = Math.max(0, flashG.alpha - dt * .0011);
@@ -1172,8 +1186,9 @@ function updateFx(dt, now) {
 /* =========================================================================
    ANA DÖNGÜ
    ========================================================================= */
-const fpsEl = $('fps'); let fpsAcc = 0, fpsFrames = 0, fpsWorst = 0, chipAcc = 0;
-if (DEBUG) fpsEl.style.display = 'block';
+const fpsEl = $('fps'); let fpsAcc = 0, fpsFrames = 0, fpsWorst = 0, chipAcc = 0, fpsOn = DEBUG;
+function setFps(on) { fpsOn = on; fpsAcc = fpsFrames = fpsWorst = 0; fpsEl.textContent = '… fps'; fpsEl.style.display = on ? 'block' : 'none'; }
+setFps(fpsOn);
 app.ticker.add((tk) => {
   const dt = Math.min(tk.deltaMS, 100), now = performance.now();
   let alpha = 1;
@@ -1188,12 +1203,14 @@ app.ticker.add((tk) => {
       if (gameTime > it.born + it.life) removeItem(it);
       else if (it.type === 'mucus' && cfg.harden && state === 'play' && gameTime - it.born > cfg.harden) harden(it);
     }
+    if (state === 'play') updateViruses(dt);
   }
   renderSnake(running() ? alpha : 1, dt, now);
   for (const m of movers) { const a = running() ? alpha : 1; m.s.position.set((m.px + (m.x - m.px) * a + .5) * cell, (m.py + (m.y - m.py) * a + .5) * cell + Math.sin(now * .008 + m.ph) * cell * .04); m.s.width = m.s.height = cell * 1.1; m.s.scale.x = Math.abs(m.s.scale.x) * (m.dx < 0 ? -1 : 1); }
+  renderViruses(running() ? alpha : 1, dt, now);
   updateFx(dt, now);
   if ((chipAcc += dt) > 100) { chipAcc = 0; updateChips(); }
-  if (DEBUG) {
+  if (fpsOn) {
     fpsAcc += tk.deltaMS; fpsFrames++; fpsWorst = Math.max(fpsWorst, tk.deltaMS);
     if (fpsAcc >= 500) { fpsEl.textContent = `${Math.round(fpsFrames * 1000 / fpsAcc)} fps  en kötü ${fpsWorst.toFixed(1)}ms  ${len} seg`; fpsAcc = fpsFrames = fpsWorst = 0; }
   }
@@ -1213,7 +1230,7 @@ const KEYS = { ArrowUp: 0, KeyW: 0, ArrowRight: 1, KeyD: 1, ArrowDown: 2, KeyS: 
 addEventListener('keydown', (e) => {
   if (e.code in KEYS && state === 'play') { e.preventDefault(); pushDir(KEYS[e.code]); return; }
   if (e.code === 'KeyP' || e.code === 'Escape') { e.preventDefault(); togglePause(); }
-  if (e.code === 'KeyF' && e.shiftKey) fpsEl.style.display = fpsEl.style.display === 'block' ? 'none' : 'block';
+  if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey && !e.altKey) setFps(!fpsOn);
 });
 let swX = 0, swY = 0, swOn = false;
 stageEl.addEventListener('pointerdown', (e) => { swOn = true; swX = e.clientX; swY = e.clientY; initAudio(); });
@@ -1255,11 +1272,15 @@ function updateChips() {
     el.classList.toggle('on', on); if (on) el.querySelector('b').style.transform = `scaleX(${left / 6000})`;
   };
   set('chipSerum', slowUntil); set('chipBreeze', breezeUntil);
+  const vOn = !!cfg.virus && mode !== 'demo';
+  $('chipVirus').classList.toggle('on', vOn); $('chipCarry').classList.toggle('on', vOn && carriedAt.length > 0);
+  if (vOn) { $('chipVirusN').textContent = viruses.length; $('chipCarryN').textContent = carriedAt.length; }
 }
 function setMute() { $('muteWave').style.display = prog.muted ? 'none' : ''; $('btnMute').setAttribute('aria-label', prog.muted ? 'Sesi aç' : 'Sesi kapat'); }
 function hideHint() { if ($('hint').classList.contains('on')) { $('hint').classList.remove('on'); prog.seenTut = true; save(); } }
 
 function homeStats() {
+  $('hsBadgesTotal').textContent = BADGES.length;
   $('hsStars').textContent = totalStars(); $('hsBadges').textContent = Object.keys(prog.badges).length; $('hsBest').textContent = Math.max(prog.best, prog.endlessBest);
   $('btnAdventure').textContent = prog.done.some(Boolean) ? 'Maceraya devam et' : 'Maceraya başla';
 }
@@ -1287,6 +1308,7 @@ function legendFor(c) {
   if (c.gold) k.push('gold'); if (c.serum) k.push('serum'); if (c.breeze) k.push('breeze');
   if (c.obs.some(r => !((r.w === 1 || r.h === 1) && r.w * r.h > 2))) k.push('polyp');
   if (c.obs.some(r => (r.w === 1 || r.h === 1) && r.w * r.h > 2)) k.push('septum');
+  if (c.virus) k.push('virus', 'infected');
   if (c.movers) k.push('plug'); if (c.portals) k.push('portal'); if (c.harden) k.push('crust');
   return k.map(t => `<div><img alt="" src="${iconURL[t]}"><span><b>${ITEM_INFO[t][0]}</b><span>${ITEM_INFO[t][1]}</span></span></div>`).join('');
 }
@@ -1331,8 +1353,7 @@ function openCollect(t) {
   const ts = totalStars(), body = $('collectBody');
   if (tab === 'skins') {
     body.innerHTML = `<p>Yıldız topladıkça yeni görünümler açılır. Şu an <b>${ts}</b> yıldızın var.</p><div class="grid">` + SKINS.map((s, i) => {
-      const lock = ts < s.need, bodyCss = s.body === -1 ? 'conic-gradient(#ff6b6b,#ffd93d,#6bcB77,#4d96ff,#c77dff,#ff6b6b)' : '#' + s.body.toString(16).padStart(6, '0');
-      const sw = `<span class="sw"><i style="width:26px;height:26px;background:#${s.head.toString(16).padStart(6, '0')}"></i><i style="width:20px;height:20px;background:${bodyCss}"></i><i style="width:16px;height:16px;background:${bodyCss}"></i><i style="width:12px;height:12px;background:${bodyCss}"></i></span>`;
+      const lock = ts < s.need, sw = `<img class="prev" alt="" src="${skinPreview(i)}">`;
       return `<button class="skin" data-skin="${i}" aria-pressed="${prog.skin === i}" ${lock ? 'disabled' : ''}>${sw}<b>${s.name}</b><span>${lock ? `${s.need} yıldızda açılır` : prog.skin === i ? 'Seçili' : 'Seçmek için dokun'}</span></button>`;
     }).join('') + '</div>';
     body.querySelectorAll('.skin').forEach(b => b.onclick = () => { prog.skin = +b.dataset.skin; save(); applySkin(); openCollect(); track('skin', { id: prog.skin }); });
@@ -1345,7 +1366,28 @@ function openCollect(t) {
   }
   show('scrCollect');
 }
-function applySkin() { skinBodyRaw = SKINS[prog.skin].body; skinBody = rgb(skinBodyRaw === -1 ? 0xffffff : skinBodyRaw); }
+// koleksiyon kartı için başın küçük resmi (oyundaki dokulardan)
+const previewCache = {};
+function skinPreview(i) {
+  if (previewCache[i]) return previewCache[i];
+  const s = SKINS[i], [c, x] = cnv(), hex = v => '#' + v.toString(16).padStart(6, '0');
+  const tinted = (src, fill) => { const [t, tx] = cnv(); tx.drawImage(src, 0, 0); tx.globalCompositeOperation = 'multiply'; tx.fillStyle = typeof fill === 'function' ? fill(tx) : fill; tx.fillRect(0, 0, TS, TS); tx.globalCompositeOperation = 'destination-in'; tx.drawImage(src, 0, 0); return t; };
+  const mid = (src, k) => x.drawImage(src, TS * (1 - k) / 2, TS * (1 - k) / 2, TS * k, TS * k);
+  if (s.classic) { mid(tinted(C.ball, hex(s.head)), .9); mid(C.face, .9); }
+  else {
+    let pf = hex(s.petal);
+    if (s.petal === -1) pf = g => { const lg = g.createLinearGradient(0, 0, TS, TS); ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#c77dff'].forEach((col, k) => lg.addColorStop(k / 4, col)); return lg; };
+    x.save(); x.translate(TS * .4, TS * .4); x.rotate(-.75); x.scale(1.25, 1.25); x.translate(-TS / 2, -TS / 2);
+    x.drawImage(tinted(C.petals, pf), 0, 0); x.drawImage(tinted(C.eye, hex(s.eye)), 0, 0); x.restore();
+    const d = TS * .46, o = TS * .4 - d / 2;
+    x.drawImage(tinted(C.ball, hex(s.disc)), o, o, d, d); x.drawImage(C.face2, o, o, d, d);
+  }
+  return previewCache[i] = c.toDataURL();
+}
+function applySkin() {
+  skin = SKINS[prog.skin] || SKINS[0]; skinBody = skin.classic ? rgb(skin.body) : WHITE;
+  headFace.texture = skin.classic ? T.face : T.face2;
+}
 
 $('btnAdventure').onclick = () => { initAudio(); openMap(); };
 $('btnEndless').onclick = () => { initAudio(); openEndless(); };
@@ -1373,10 +1415,7 @@ addEventListener('blur', () => togglePause(true));
 
 if (DEBUG) window.__ns = { step, get st() { return { state, mode, len, eaten, target, exitOpen, score, levelIdx }; }, items: () => items.map(i => [i.type, i.x, i.y]),
   head: () => [bx[0], by[0]], body: () => Array.from({ length: len }, (_, i) => [bx[i], by[i]]), obs: (x, y) => obstacle[y * COLS + x] || (isPortal(x, y) ? 0 : 0),
-  mover: (x, y) => !!moverAt(x, y), exit: () => [exitX, exitY], setDir: d => { dir = d; queue.length = 0; }, dir: () => dir, prog, botDir };
+  mover: (x, y) => !!moverAt(x, y), exit: () => [exitX, exitY], setDir: d => { dir = d; queue.length = 0; }, dir: () => dir, prog, botDir, viruses: () => viruses.map(v => [v.x, v.y]), carried: () => carriedAt.length, addVirus, lv: () => lv };
 
 setMute(); applySkin(); layout(); goHome();
 })();
-</script>
-</body>
-</html>
