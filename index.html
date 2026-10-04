@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#EAF7F4">
-<title>Nasodren Akış</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌸</text></svg>">
+<title>Siklamen Akış</title>
+<meta name="description" content="Sinüsleri tıkayan mukusu siklamen akışıyla temizle; antibiyotiğin virüse etki etmediğini oynayarak öğren.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -26,6 +28,7 @@
         <div class="chip" id="chipBreeze"><img alt="" data-icon="breeze"><i><b></b></i></div>
         <div class="chip" id="chipVirus" title="Serbest virüs"><img alt="Serbest virüs" data-icon="virus"><span id="chipVirusN">0</span></div>
         <div class="chip" id="chipCarry" title="Taşınan virüs"><img alt="Taşınan virüs" data-icon="infected"><span id="chipCarryN">0</span></div>
+        <div class="chip" id="chipResist" title="Dirençli bakteri"><img alt="Dirençli bakteri" data-icon="resist"><span id="chipResistN">0</span></div>
       </div>
     </div>
   </header>
@@ -41,20 +44,20 @@
   <section class="overlay show" id="scrHome" aria-labelledby="tHome">
     <div class="brand">
       <img alt="" data-icon="gold">
-      <div class="wordmark">Nasodren</div>
+      <div class="wordmark">Siklamen Oyunları</div>
       <h1 id="tHome">Akış</h1>
-      <p>Sinüsleri temizleyen akışı sen yönet</p>
+      <p>Virüse antibiyotik değil, akış</p>
     </div>
     <div class="sheet">
       <div class="stack">
-        <button class="btn" id="btnAdventure">Maceraya başla</button>
+        <button class="btn" id="btnAdventure">Oyna</button>
         <div class="btns" style="margin:0">
           <button class="btn ghost" id="btnEndless">Serbest akış</button>
           <button class="btn ghost" id="btnCollect">Koleksiyon</button>
         </div>
       </div>
-      <div class="homestats"><span><b id="hsStars">0</b>/24 yıldız</span><span><b id="hsBadges">0</b>/<span id="hsBadgesTotal">13</span> rozet</span><span>Rekor <b id="hsBest">0</b></span></div>
-      <p class="legal">Bu oyun eğlence ve bilgilendirme amaçlıdır; tıbbi teşhis, tedavi ya da hekim tavsiyesi yerine geçmez. Ürünü kullanmadan önce kullanma talimatını okuyun, beklenmeyen bir etki görürseniz hekiminize veya eczacınıza danışın.</p>
+      <div class="homestats"><span><b id="hsStars">0</b>/<span id="hsStarsTotal">18</span> yıldız</span><span><b id="hsBadges">0</b>/<span id="hsBadgesTotal">13</span> rozet</span><span>Rekor <b id="hsBest">0</b></span></div>
+      <p class="legal">Bu oyun genel bilgilendirme amaçlıdır; tanı koymaz, tedavi önermez. Antibiyotik kullanımına hekim karar verir. Sağlığınızla ilgili konularda eczacınıza ve doktorunuza danışın. Oyun kayıt istemez, veri toplamaz.</p>
     </div>
   </section>
 
@@ -65,7 +68,7 @@
         <button class="icon" data-back aria-label="Geri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
         <h2 id="tMap">Sinüs haritası</h2>
       </div>
-      <p>Burun boşluğundan başlayıp tüm sinüsleri dolaş. Her bölümde üç yıldız var.</p>
+      <p>Üç perdede altı bölüm: tıkanıklık, virüs ve direnç. Her bölümde üç yıldız var.</p>
       <div id="map"></div>
     </div>
   </section>
@@ -76,11 +79,13 @@
       <p class="kicker" id="inKicker">Bölüm 1</p>
       <h2 id="tIntro">Burun boşluğu</h2>
       <p id="inDesc"></p>
-      <p class="sub">Bu bölümde</p>
+      <p class="sub" id="inNew">Bu bölümde yeni</p>
       <div class="legend" id="inLegend"></div>
       <div id="inGoalsWrap"><p class="sub">Yıldız hedefleri</p><ul class="goals" id="inGoals"></ul></div>
-      <button class="btn" id="btnStart">Başla</button>
-      <div class="btns"><button class="btn ghost" data-back>Geri</button></div>
+      <div class="actions">
+        <button class="btn" id="btnStart">Başla</button>
+        <div class="btns"><button class="btn ghost" data-back>Geri</button></div>
+      </div>
     </div>
   </section>
 
@@ -96,9 +101,12 @@
         <div><b id="reTime">0</b><span>Süre</span></div>
         <div id="reVirusWrap"><b id="reVirus">0</b><span>Atılan virüs</span></div>
       </div>
+      <div class="tip close" id="reClose"><b>Unutma:</b> <span id="reCloseText"></span> <a href="https://yasasinsaglik.com/antibiyotik-direnci" target="_blank" rel="noopener">Daha fazlası</a></div>
       <div class="fact" id="reFact"><div class="em">💡</div><div><strong id="reFactTitle">Biliyor muydunuz?</strong><p id="reFactText"></p></div></div>
-      <button class="btn" id="btnNext">Sonraki bölüm</button>
-      <div class="btns"><button class="btn ghost" id="btnReplay">Tekrar</button><button class="btn ghost" id="btnMapFromResult">Harita</button></div>
+      <div class="actions">
+        <button class="btn" id="btnNext">Sonraki bölüm</button>
+        <div class="btns"><button class="btn ghost" id="btnReplay">Tekrar</button><button class="btn ghost" id="btnMapFromResult">Harita</button></div>
+      </div>
     </div>
   </section>
 
@@ -106,16 +114,18 @@
   <section class="overlay" id="scrOver" aria-labelledby="tOver">
     <div class="card">
       <h2 id="tOver">Akış takıldı</h2>
-      <p id="overReason">Drenaj mukoza duvarına çarptı.</p>
+      <p id="overReason">Akış mukoza duvarına çarptı.</p>
       <div class="stats">
         <div><b id="ovScore">0</b><span>Skor</span></div>
         <div><b id="ovBest">0</b><span id="ovBestLabel">Rekor</span></div>
         <div><b id="ovLen">0</b><span>Uzunluk</span></div>
       </div>
       <div class="tip"><b>İpucu:</b> <span id="ovTip"></span></div>
-      <button class="btn" id="btnRetry">Tekrar oyna</button>
-      <div class="btns"><button class="btn ghost" id="btnOverBack">Harita</button></div>
-      <a class="link" id="ctaLink" href="https://nasodren.com.tr/" target="_blank" rel="noopener">Nasodren hakkında bilgi al</a>
+      <div class="actions">
+        <button class="btn" id="btnRetry">Tekrar oyna</button>
+        <div class="btns"><button class="btn ghost" id="btnOverBack">Harita</button></div>
+        <a class="link" id="ctaLink" href="https://yasasinsaglik.com/antibiyotik-direnci" target="_blank" rel="noopener">Antibiyotik direnci hakkında bilgi al</a>
+      </div>
     </div>
   </section>
 

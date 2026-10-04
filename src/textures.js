@@ -1,0 +1,253 @@
+/* Bütün dokular açılışta bir kez, 2D canvas ile çizilir; PNG yok. */
+export const TS = 128;
+export function cnv() { const c = document.createElement('canvas'); c.width = c.height = TS; return [c, c.getContext('2d')]; }
+export function seeded(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+function blob(x, cx, cy, r, bumps, amp, rnd) {
+  x.beginPath(); const n = 56, ph = rnd() * 6.28;
+  for (let i = 0; i <= n; i++) {
+    const a = i / n * Math.PI * 2, rr = r * (1 + amp * Math.sin(a * bumps + ph) + amp * .5 * Math.sin(a * (bumps + 2) + ph * 2));
+    const X = cx + Math.cos(a) * rr, Y = cy + Math.sin(a) * rr; i ? x.lineTo(X, Y) : x.moveTo(X, Y);
+  }
+  x.closePath();
+}
+function rg(x, x0, y0, r0, x1, y1, r1, stops) { const g = x.createRadialGradient(x0, y0, r0, x1, y1, r1); stops.forEach(([o, c]) => g.addColorStop(o, c)); return g; }
+function eyes(x, cx, cy, gap, r, mood) {
+  for (const s of [-1, 1]) {
+    const ex = cx + s * gap;
+    x.fillStyle = '#fff'; x.beginPath(); x.ellipse(ex, cy, r, r * 1.12, 0, 0, 6.28); x.fill();
+    x.fillStyle = '#2B0F22'; x.beginPath(); x.arc(ex + r * .12, cy + r * .12, r * .55, 0, 6.28); x.fill();
+    x.fillStyle = '#fff'; x.beginPath(); x.arc(ex - r * .1, cy - r * .2, r * .2, 0, 6.28); x.fill();
+    if (mood === 'grumpy') {
+      x.strokeStyle = '#2B0F22'; x.lineWidth = r * .38; x.lineCap = 'round';
+      x.beginPath(); x.moveTo(ex - s * r * 1.05, cy - r * 1.35); x.lineTo(ex + s * r * .75, cy - r * .85); x.stroke();
+    }
+  }
+}
+function flower(x, cx, cy, r, fill, center, n = 5, rot = -Math.PI / 2) {
+  for (let i = 0; i < n; i++) {
+    x.save(); x.translate(cx, cy); x.rotate(i / n * Math.PI * 2 + rot + Math.PI / 2);
+    x.beginPath(); x.moveTo(0, 0); x.bezierCurveTo(r * .6, -r * .25, r * .5, -r * 1.05, 0, -r); x.bezierCurveTo(-r * .5, -r * 1.05, -r * .6, -r * .25, 0, 0);
+    x.fillStyle = fill; x.fill(); x.restore();
+  }
+  if (center) { x.fillStyle = center; x.beginPath(); x.arc(cx, cy, r * .22, 0, 6.28); x.fill(); }
+}
+export const C = {};
+// yılan gövdesi: gri tonlu, tint ile renklenir (görünümler tek doku ile)
+C.ball = (() => { const [c, x] = cnv();
+  x.fillStyle = rg(x, TS * .38, TS * .32, 4, TS / 2, TS / 2, TS / 2, [[0, '#ffffff'], [.55, '#e8e8e8'], [.9, '#b4b4b4'], [1, '#9a9a9a']]);
+  x.beginPath(); x.arc(TS / 2, TS / 2, TS / 2 - 2, 0, 6.28); x.fill();
+  x.fillStyle = 'rgba(255,255,255,.9)'; x.beginPath(); x.ellipse(TS * .36, TS * .3, TS * .12, TS * .07, -.6, 0, 6.28); x.fill();
+  return c; })();
+C.face = (() => { const [c, x] = cnv();
+  flower(x, TS / 2, TS * .16, TS * .17, '#FFD4E8', '#F4B81F', 3, -Math.PI / 2 - Math.PI / 3); // taç
+  eyes(x, TS / 2, TS * .47, TS * .15, TS * .11, 'happy');
+  x.fillStyle = 'rgba(255,140,180,.55)'; for (const s of [-1, 1]) { x.beginPath(); x.ellipse(TS / 2 + s * TS * .27, TS * .62, TS * .07, TS * .045, 0, 0, 6.28); x.fill(); }
+  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .035; x.lineCap = 'round'; x.beginPath(); x.arc(TS / 2, TS * .6, TS * .09, .25, Math.PI - .25); x.stroke();
+  return c; })();
+C.soft = (() => { const [c, x] = cnv();
+  x.fillStyle = rg(x, TS / 2, TS / 2, 0, TS / 2, TS / 2, TS / 2, [[0, 'rgba(255,255,255,1)'], [.5, 'rgba(255,255,255,.5)'], [1, 'rgba(255,255,255,0)']]);
+  x.fillRect(0, 0, TS, TS); return c; })();
+C.dot = (() => { const [c, x] = cnv(); x.fillStyle = '#fff'; x.beginPath(); x.arc(TS / 2, TS / 2, TS / 2 - 2, 0, 6.28); x.fill(); return c; })();
+C.mucus = [11, 23, 37].map(sd => { const [c, x] = cnv(), rnd = seeded(sd);
+  blob(x, TS / 2, TS * .54, TS * .4, 4, .08, rnd);
+  x.fillStyle = rg(x, TS * .4, TS * .38, 4, TS / 2, TS / 2, TS * .5, [[0, '#F0F28C'], [.55, '#C3CF3E'], [1, '#8F9A1C']]); x.fill();
+  x.lineWidth = 4; x.strokeStyle = '#7C8617'; x.stroke();
+  eyes(x, TS / 2, TS * .5, TS * .13, TS * .085, 'grumpy');
+  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .03; x.lineCap = 'round'; x.beginPath(); x.arc(TS / 2, TS * .75, TS * .07, Math.PI + .5, -.5); x.stroke();
+  return c; });
+C.gold = (() => { const [c, x] = cnv();
+  x.fillStyle = rg(x, TS / 2, TS / 2, 0, TS / 2, TS / 2, TS / 2, [[0, 'rgba(255,220,120,.55)'], [1, 'rgba(255,220,120,0)']]); x.fillRect(0, 0, TS, TS);
+  flower(x, TS / 2, TS / 2, TS * .4, rg(x, TS / 2, TS / 2, 2, TS / 2, TS / 2, TS * .45, [[0, '#FFF3C4'], [.6, '#F8C537'], [1, '#D8920F']]), '#D6227F');
+  return c; })();
+C.serum = (() => { const [c, x] = cnv();
+  x.beginPath(); x.moveTo(TS / 2, TS * .08); x.bezierCurveTo(TS * .8, TS * .4, TS * .84, TS * .62, TS * .82, TS * .66);
+  x.arc(TS / 2, TS * .64, TS * .32, .1, Math.PI - .1); x.bezierCurveTo(TS * .16, TS * .62, TS * .2, TS * .4, TS / 2, TS * .08);
+  const g = x.createLinearGradient(0, TS * .08, 0, TS * .96); g.addColorStop(0, '#DDF2FF'); g.addColorStop(1, '#5AAEEB'); x.fillStyle = g; x.fill();
+  x.lineWidth = 4; x.strokeStyle = '#3F8FCC'; x.stroke();
+  eyes(x, TS / 2, TS * .62, TS * .12, TS * .07, 'happy');
+  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .03; x.lineCap = 'round'; x.beginPath(); x.arc(TS / 2, TS * .72, TS * .06, .3, Math.PI - .3); x.stroke();
+  return c; })();
+C.breeze = (() => { const [c, x] = cnv();
+  x.save(); x.translate(TS / 2, TS / 2); x.rotate(-.7);
+  x.beginPath(); x.moveTo(0, -TS * .42); x.bezierCurveTo(TS * .36, -TS * .2, TS * .3, TS * .3, 0, TS * .42); x.bezierCurveTo(-TS * .3, TS * .3, -TS * .36, -TS * .2, 0, -TS * .42);
+  const g = x.createLinearGradient(-TS * .3, 0, TS * .3, 0); g.addColorStop(0, '#7BE3A8'); g.addColorStop(1, '#2FAE6E'); x.fillStyle = g; x.fill();
+  x.lineWidth = 4; x.strokeStyle = '#1F8A55'; x.stroke();
+  x.strokeStyle = 'rgba(255,255,255,.8)'; x.lineWidth = 4; x.beginPath(); x.moveTo(0, -TS * .34); x.quadraticCurveTo(TS * .04, 0, 0, TS * .36); x.stroke();
+  x.restore();
+  x.strokeStyle = '#fff'; x.lineWidth = 5; x.lineCap = 'round';
+  x.beginPath(); x.arc(TS * .26, TS * .28, TS * .1, Math.PI * .8, Math.PI * 2.1); x.stroke();
+  return c; })();
+C.polyp = [5, 9, 13].map(sd => { const [c, x] = cnv(), rnd = seeded(sd);
+  blob(x, TS / 2, TS / 2, TS * .45, 5, .06, rnd);
+  x.fillStyle = rg(x, TS * .38, TS * .34, 4, TS / 2, TS / 2, TS * .52, [[0, '#F58FA6'], [.6, '#D9577A'], [1, '#B23A5E']]); x.fill();
+  x.lineWidth = 4; x.strokeStyle = '#9C2E50'; x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.55)'; x.beginPath(); x.ellipse(TS * .36, TS * .32, 12, 7, -.6, 0, 6.28); x.fill();
+  return c; });
+C.septum = (() => { const [c, x] = cnv();
+  x.beginPath(); x.roundRect(4, 4, TS - 8, TS - 8, 30);
+  const g = x.createLinearGradient(0, 0, 0, TS); g.addColorStop(0, '#E87995'); g.addColorStop(1, '#BF456A'); x.fillStyle = g; x.fill();
+  x.lineWidth = 4; x.strokeStyle = '#9C2E50'; x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.roundRect(18, 14, TS - 36, 16, 8); x.fill();
+  return c; })();
+C.crust = (() => { const [c, x] = cnv(), rnd = seeded(77);
+  blob(x, TS / 2, TS / 2, TS * .44, 6, .09, rnd);
+  x.fillStyle = rg(x, TS * .4, TS * .36, 4, TS / 2, TS / 2, TS * .5, [[0, '#C8B377'], [.6, '#9C8446'], [1, '#6E5A2A']]); x.fill();
+  x.lineWidth = 4; x.strokeStyle = '#5A4920'; x.stroke();
+  x.strokeStyle = 'rgba(60,45,15,.55)'; x.lineWidth = 3;
+  for (let i = 0; i < 4; i++) { x.beginPath(); const a = rnd() * 6.28; x.moveTo(TS / 2, TS / 2); x.lineTo(TS / 2 + Math.cos(a) * 34, TS / 2 + Math.sin(a) * 34); x.stroke(); }
+  return c; })();
+C.plug = (() => { const [c, x] = cnv(), rnd = seeded(3);
+  blob(x, TS / 2, TS * .54, TS * .42, 7, .05, rnd);
+  x.fillStyle = rg(x, TS * .4, TS * .36, 4, TS / 2, TS / 2, TS * .5, [[0, '#C9B3EA'], [.6, '#9474C4'], [1, '#6B4E9C']]); x.fill();
+  x.lineWidth = 4; x.strokeStyle = '#553A84'; x.stroke();
+  eyes(x, TS / 2, TS * .5, TS * .14, TS * .09, 'grumpy');
+  x.fillStyle = '#2B0F22'; x.beginPath(); x.roundRect(TS * .38, TS * .7, TS * .24, TS * .06, 4); x.fill();
+  return c; })();
+C.portal = (() => { const [c, x] = cnv();
+  for (let i = 0; i < 3; i++) {
+    x.strokeStyle = ['rgba(255,255,255,1)', 'rgba(255,255,255,.7)', 'rgba(255,255,255,.4)'][i]; x.lineWidth = 9 - i * 2; x.lineCap = 'round';
+    x.beginPath(); x.arc(TS / 2, TS / 2, TS * (.42 - i * .12), i * 2, i * 2 + Math.PI * 1.35); x.stroke();
+    x.beginPath(); x.arc(TS / 2, TS / 2, TS * (.42 - i * .12), i * 2 + Math.PI, i * 2 + Math.PI * 2.35); x.stroke();
+  }
+  return c; })();
+C.fresh = (() => { const [c, x] = cnv();
+  x.beginPath(); x.roundRect(6, 6, TS - 12, TS - 12, 34);
+  const g = x.createLinearGradient(0, 0, 0, TS); g.addColorStop(0, '#FFFFFF'); g.addColorStop(1, '#CFF3EA'); x.fillStyle = g; x.fill();
+  return c; })();
+C.petal = (() => { const [c, x] = cnv();
+  x.translate(TS / 2, TS / 2); x.beginPath(); x.moveTo(0, TS * .42); x.bezierCurveTo(TS * .34, TS * .1, TS * .22, -TS * .38, 0, -TS * .44); x.bezierCurveTo(-TS * .22, -TS * .38, -TS * .34, TS * .1, 0, TS * .42);
+  const g = x.createLinearGradient(0, -TS * .44, 0, TS * .42); g.addColorStop(0, '#F9B7D3'); g.addColorStop(1, '#E6559A'); x.fillStyle = g; x.fill();
+  return c; })();
+C.virus = (() => { const [c, x] = cnv(), cx = TS / 2, cy = TS / 2, r = TS * .28;
+  x.lineCap = 'round';
+  for (let i = 0; i < 9; i++) {
+    const a = i / 9 * Math.PI * 2 - Math.PI / 2, ca = Math.cos(a), sa = Math.sin(a);
+    x.strokeStyle = '#B8401F'; x.lineWidth = 7; x.beginPath(); x.moveTo(cx + ca * r * .8, cy + sa * r * .8); x.lineTo(cx + ca * r * 1.42, cy + sa * r * 1.42); x.stroke();
+    x.fillStyle = '#FFB13D'; x.beginPath(); x.arc(cx + ca * r * 1.48, cy + sa * r * 1.48, TS * .06, 0, 6.28); x.fill();
+    x.lineWidth = 3; x.stroke();
+  }
+  x.beginPath(); x.arc(cx, cy, r, 0, 6.28);
+  x.fillStyle = rg(x, cx - r * .35, cy - r * .4, 3, cx, cy, r, [[0, '#FFB07A'], [.6, '#F2683A'], [1, '#C8432A']]); x.fill();
+  x.lineWidth = 4; x.strokeStyle = '#9E3218'; x.stroke();
+  eyes(x, cx, cy - r * .05, r * .38, r * .24, 'grumpy');
+  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .03; x.beginPath(); x.arc(cx, cy + r * .6, r * .2, Math.PI + .5, -.5); x.stroke();
+  return c; })();
+// virüs yapışmış mukus: hafif mor ton + köşede küçük virüs
+C.infected = C.mucus.map(m => { const [c, x] = cnv();
+  x.drawImage(m, 0, 0);
+  x.globalCompositeOperation = 'source-atop'; x.fillStyle = 'rgba(130,60,170,.28)'; x.fillRect(0, 0, TS, TS);
+  x.globalCompositeOperation = 'source-over'; x.drawImage(C.virus, TS * .5, -TS * .02, TS * .52, TS * .52);
+  return c; });
+
+/* Sıklamen yılan: baş = geriye kıvrık taç yapraklı çiçek (ileri = dokunun üstü), gövde = sap + yaprak, kuyruk = yumru */
+const PETAL_ANG = [-.78, -.39, 0, .39, .78];        // taç yapraklar geriye doğru yelpaze
+function petalPath(x, w, y0, y1) {                    // yerel +y yönünde, hafif burgulu taç yaprak
+  const L = y1 - y0;
+  x.beginPath(); x.moveTo(0, y0);
+  x.bezierCurveTo(w * 1.15, y0 + L * .2, w * 1.05, y0 + L * .72, w * .3, y1 - 1);
+  x.quadraticCurveTo(0, y1 + 3, -w * .35, y1 - 3);
+  x.bezierCurveTo(-w * .95, y0 + L * .75, -w * .9, y0 + L * .2, 0, y0);
+}
+// gri tonlu: görünüm rengiyle tint edilir, dipler koyu kalır
+C.petals = (() => { const [c, x] = cnv();
+  for (const k of [0, 4, 1, 3, 2]) {
+    x.save(); x.translate(TS / 2, TS / 2); x.rotate(-PETAL_ANG[k]);
+    petalPath(x, 19, 6, 59);
+    const g = x.createLinearGradient(0, 8, 0, 58); g.addColorStop(0, '#bdbdbd'); g.addColorStop(.45, '#efefef'); g.addColorStop(1, '#ffffff');
+    x.fillStyle = g; x.fill(); x.lineWidth = 2; x.strokeStyle = 'rgba(0,0,0,.2)'; x.stroke();
+    x.strokeStyle = 'rgba(0,0,0,.09)'; x.lineWidth = 2; x.beginPath(); x.moveTo(0, 30); x.quadraticCurveTo(3, 44, 1, 55); x.stroke();
+    x.restore();
+  }
+  return c; })();
+// sıklamene özgü koyu "göz": taç yaprak diplerinde
+C.eye = (() => { const [c, x] = cnv();
+  x.fillStyle = '#fff';
+  for (const a of PETAL_ANG) { x.save(); x.translate(TS / 2, TS / 2); x.rotate(-a); x.beginPath(); x.ellipse(0, 25, 8, 10, 0, 0, 6.28); x.fill(); x.restore(); }
+  x.beginPath(); x.arc(TS / 2, TS / 2, 23, 0, 6.28); x.fill();
+  return c; })();
+C.face2 = (() => { const [c, x] = cnv();
+  eyes(x, TS / 2, TS * .45, TS * .15, TS * .11, 'happy');
+  x.fillStyle = 'rgba(255,150,190,.6)'; for (const s of [-1, 1]) { x.beginPath(); x.ellipse(TS / 2 + s * TS * .27, TS * .6, TS * .07, TS * .045, 0, 0, 6.28); x.fill(); }
+  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .035; x.lineCap = 'round'; x.beginPath(); x.arc(TS / 2, TS * .58, TS * .09, .25, Math.PI - .25); x.stroke();
+  return c; })();
+// kalp biçimli, gümüş desenli sıklamen yaprağı; sapı alt ortada
+C.leaf = (() => { const [c, x] = cnv();
+  x.strokeStyle = '#3F8A4F'; x.lineWidth = 6; x.lineCap = 'round'; x.beginPath(); x.moveTo(64, 98); x.lineTo(64, 125); x.stroke();
+  const heart = (s) => { x.save(); x.translate(64, 64); x.scale(s, s); x.translate(-64, -64);
+    x.beginPath(); x.moveTo(64, 98); x.bezierCurveTo(42, 116, 8, 100, 14, 70); x.bezierCurveTo(20, 40, 50, 22, 64, 8);
+    x.bezierCurveTo(78, 22, 108, 40, 114, 70); x.bezierCurveTo(120, 100, 86, 116, 64, 98); x.restore(); };
+  heart(1); const g = x.createLinearGradient(0, 8, 0, 110); g.addColorStop(0, '#46A45F'); g.addColorStop(1, '#2C7442'); x.fillStyle = g; x.fill();
+  x.lineWidth = 3; x.strokeStyle = '#1F5E33'; x.stroke();
+  heart(.62); x.lineWidth = 9; x.strokeStyle = 'rgba(214,236,222,.55)'; x.stroke();          // gümüş halka
+  x.strokeStyle = 'rgba(255,255,255,.35)'; x.lineWidth = 3; x.beginPath(); x.moveTo(64, 96); x.lineTo(64, 22); x.stroke();
+  for (const s of [-1, 1]) { x.beginPath(); x.moveTo(64, 70); x.quadraticCurveTo(64 + s * 22, 58, 64 + s * 36, 64); x.stroke(); }
+  return c; })();
+// yumru: ürün özütünün geldiği yer
+C.tuber = (() => { const [c, x] = cnv();
+  x.strokeStyle = '#7A5534'; x.lineWidth = 3; x.lineCap = 'round';
+  for (const [a, l] of [[-.5, 26], [0, 32], [.45, 24], [.9, 18], [-.95, 18]]) { x.beginPath(); x.moveTo(64 + Math.sin(a) * 30, 78); x.quadraticCurveTo(64 + Math.sin(a) * 40, 78 + l * .6, 64 + Math.sin(a) * 46, 78 + l); x.stroke(); }
+  x.beginPath(); x.ellipse(64, 66, 44, 32, 0, 0, 6.28);
+  x.fillStyle = rg(x, 50, 52, 4, 64, 66, 48, [[0, '#C79563'], [.6, '#9A6B3E'], [1, '#6E4825']]); x.fill();
+  x.lineWidth = 3; x.strokeStyle = '#5A3A1E'; x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.ellipse(48, 54, 12, 6, -.4, 0, 6.28); x.fill();
+  x.fillStyle = 'rgba(90,58,30,.45)'; for (const [px, py] of [[78, 60], [56, 76], [86, 74]]) { x.beginPath(); x.arc(px, py, 2.5, 0, 6.28); x.fill(); }
+  return c; })();
+// saponin köpüğü
+C.bubble = (() => { const [c, x] = cnv();
+  x.beginPath(); x.arc(64, 64, 56, 0, 6.28);
+  x.fillStyle = rg(x, 64, 64, 20, 64, 64, 56, [[0, 'rgba(200,236,250,.15)'], [.8, 'rgba(170,224,245,.35)'], [1, 'rgba(255,255,255,.7)']]); x.fill();
+  x.lineWidth = 6; x.strokeStyle = 'rgba(110,196,226,.9)'; x.stroke();
+  x.strokeStyle = '#fff'; x.lineWidth = 7; x.lineCap = 'round'; x.beginPath(); x.arc(64, 64, 38, Math.PI * 1.1, Math.PI * 1.45); x.stroke();
+  return c; })();
+// temizlenen hücrede kısa süre açan çiçek
+C.bloom = (() => { const [c, x] = cnv(); flower(x, 64, 64, 56, '#ffffff', '#F4B81F'); return c; })();
+// dokuda yaşayan zararsız bakteri (çubuk biçimli, sakin yüz)
+function rod(x, a, b, stroke) {
+  x.save(); x.translate(TS / 2, TS / 2); x.rotate(-.5);
+  x.beginPath(); x.roundRect(-TS * .36, -TS * .19, TS * .72, TS * .38, TS * .19);
+  const g = x.createLinearGradient(0, -TS * .19, 0, TS * .19); g.addColorStop(0, a); g.addColorStop(1, b); x.fillStyle = g; x.fill();
+  x.lineWidth = 4; x.strokeStyle = stroke; x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.45)'; x.beginPath(); x.roundRect(-TS * .26, -TS * .14, TS * .3, TS * .07, TS * .035); x.fill();
+  x.restore();
+}
+C.flora = (() => { const [c, x] = cnv();
+  x.strokeStyle = '#4FA88A'; x.lineWidth = 3; x.lineCap = 'round';
+  for (const [sx, sy, ex, ey] of [[20, 86, 6, 100], [108, 42, 122, 28], [100, 56, 120, 60]]) { x.beginPath(); x.moveTo(sx, sy); x.quadraticCurveTo((sx + ex) / 2 + 6, (sy + ey) / 2 - 6, ex, ey); x.stroke(); }
+  rod(x, '#CDEFE2', '#74C9AA', '#3E9479');
+  eyes(x, TS / 2, TS * .5, TS * .11, TS * .07, 'happy');
+  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .025; x.lineCap = 'round'; x.beginPath(); x.arc(TS / 2, TS * .58, TS * .05, .3, Math.PI - .3); x.stroke();
+  return c; })();
+// antibiyotikten sonra dirençlenen bakteri: aynı bakterinin koyulaşmış, zırhlı, somurtkan hali (mor tıkaçla karışmasın)
+C.resist = (() => { const [c, x] = cnv();
+  x.beginPath(); x.arc(TS / 2, TS / 2, TS * .46, 0, 6.28);
+  x.fillStyle = rg(x, TS / 2, TS / 2, TS * .3, TS / 2, TS / 2, TS * .46, [[0, 'rgba(60,110,90,0)'], [1, 'rgba(60,110,90,.35)']]); x.fill();
+  x.lineWidth = 7; x.strokeStyle = '#4B5A7E'; x.stroke();
+  x.fillStyle = '#C9D3E8'; for (let i = 0; i < 8; i++) { const a = i / 8 * 6.28; x.beginPath(); x.arc(TS / 2 + Math.cos(a) * TS * .46, TS / 2 + Math.sin(a) * TS * .46, 4, 0, 6.28); x.fill(); }
+  rod(x, '#7FB59B', '#2F6B52', '#1D4A37');
+  eyes(x, TS / 2, TS * .5, TS * .11, TS * .07, 'grumpy');
+  x.fillStyle = '#2B0F22'; x.beginPath(); x.roundRect(TS * .43, TS * .6, TS * .14, TS * .04, 3); x.fill();
+  return c; })();
+// antibiyotik kapsülü: göz alıcı, ışıltılı (cazip görünmesi bilerek)
+C.capsule = (() => { const [c, x] = cnv();
+  x.fillStyle = rg(x, TS / 2, TS / 2, 0, TS / 2, TS / 2, TS / 2, [[0, 'rgba(255,120,130,.45)'], [1, 'rgba(255,120,130,0)']]); x.fillRect(0, 0, TS, TS);
+  x.save(); x.translate(TS / 2, TS / 2); x.rotate(-.6);
+  const w = TS * .62, h = TS * .3;
+  x.save(); x.beginPath(); x.roundRect(-w / 2, -h / 2, w, h, h / 2); x.clip();
+  let g = x.createLinearGradient(0, -h / 2, 0, h / 2); g.addColorStop(0, '#FF7A84'); g.addColorStop(1, '#C92A3A'); x.fillStyle = g; x.fillRect(-w / 2, -h / 2, w / 2, h);
+  g = x.createLinearGradient(0, -h / 2, 0, h / 2); g.addColorStop(0, '#FFFFFF'); g.addColorStop(1, '#D9DDE3'); x.fillStyle = g; x.fillRect(0, -h / 2, w / 2, h);
+  x.fillStyle = 'rgba(255,255,255,.6)'; x.fillRect(-w / 2 + 8, -h / 2 + 5, w - 16, 6);
+  x.restore();
+  x.beginPath(); x.roundRect(-w / 2, -h / 2, w, h, h / 2); x.lineWidth = 4; x.strokeStyle = '#8E2230'; x.stroke();
+  x.beginPath(); x.moveTo(0, -h / 2); x.lineTo(0, h / 2); x.lineWidth = 3; x.stroke();
+  x.restore();
+  x.fillStyle = '#FFF6C8';
+  for (const [sx, sy, r] of [[24, 30, 9], [104, 96, 7], [100, 26, 5]]) { x.beginPath(); x.moveTo(sx, sy - r); x.quadraticCurveTo(sx, sy, sx + r, sy); x.quadraticCurveTo(sx, sy, sx, sy + r); x.quadraticCurveTo(sx, sy, sx - r, sy); x.quadraticCurveTo(sx, sy, sx, sy - r); x.fill(); }
+  return c; })();
+// şişkin mukoza: komşu hücrelerle üst üste binip kesintisiz, kabarık bir bant oluşturur
+C.swell = (() => { const [c, x] = cnv(), rnd = seeded(41);
+  blob(x, TS / 2, TS / 2, TS * .47, 6, .05, rnd);
+  x.fillStyle = rg(x, TS * .38, TS * .34, 4, TS / 2, TS / 2, TS * .52, [[0, '#F58A9F'], [.55, '#DC5272'], [1, '#B8324F']]); x.fill();
+  x.lineWidth = 3; x.strokeStyle = 'rgba(150,30,60,.55)'; x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.4)'; x.beginPath(); x.ellipse(TS * .36, TS * .32, 14, 8, -.6, 0, 6.28); x.fill();
+  x.fillStyle = 'rgba(140,20,50,.25)'; for (const [px, py] of [[78, 70], [52, 82], [84, 46]]) { x.beginPath(); x.arc(px, py, 5, 0, 6.28); x.fill(); }
+  return c; })();
