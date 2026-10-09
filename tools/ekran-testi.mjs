@@ -33,7 +33,7 @@ const SCREENS = {
   intro1: async p => { await withProg(p); await p.click('#btnAdventure'); await p.evaluate(() => document.querySelector('.node[data-lv="0"]').click()); },
   intro4: async p => { await withProg(p); await p.click('#btnAdventure'); await p.evaluate(() => document.querySelector('.node[data-lv="3"]').click()); },
   endlessIntro: async p => { await p.click('#btnEndless'); },
-  play: async p => { await p.evaluate(() => window.__ns.play(2)); await p.waitForTimeout(1200); await p.evaluate(() => window.__ns.callout('Antibiyotik virüse etki etmez', 'Dokudaki bir bakteri direnç kazandı')); await p.waitForTimeout(400); },
+  play: async p => { await p.evaluate(() => window.__ns.play(2)); await p.waitForTimeout(1200); await p.evaluate(() => window.__ns.callout('Bağışıklık hücresi geldi', 'Topla, virüsler bir süre çoğalamasın')); await p.waitForTimeout(400); },
   pause: async p => { await p.evaluate(() => window.__ns.play(2)); await p.waitForTimeout(600); await p.click('#btnPause'); },
   result: async p => { await p.evaluate(() => { window.__ns.play(0); window.__ns.run(); }); await p.waitForTimeout(1900); },
   resultLast: async p => { await p.evaluate(() => { window.__ns.play(5); window.__ns.run(); }); await p.waitForTimeout(1900); },

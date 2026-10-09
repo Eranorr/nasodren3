@@ -110,9 +110,10 @@ C.portal = (() => { const [c, x] = cnv();
     x.beginPath(); x.arc(TS / 2, TS / 2, TS * (.42 - i * .12), i * 2 + Math.PI, i * 2 + Math.PI * 2.35); x.stroke();
   }
   return c; })();
+// temiz doku: düz renkli yuvarlak leke; üst üste binen lekeler dikişsiz tek bir iz gibi görünsün diye degrade yok
 C.fresh = (() => { const [c, x] = cnv();
-  x.beginPath(); x.roundRect(6, 6, TS - 12, TS - 12, 34);
-  const g = x.createLinearGradient(0, 0, 0, TS); g.addColorStop(0, '#FFFFFF'); g.addColorStop(1, '#CFF3EA'); x.fillStyle = g; x.fill();
+  x.fillStyle = rg(x, TS / 2, TS / 2, 0, TS / 2, TS / 2, TS / 2, [[0, '#E0F7F1'], [.93, '#E0F7F1'], [1, 'rgba(224,247,241,0)']]);
+  x.fillRect(0, 0, TS, TS);
   return c; })();
 C.petal = (() => { const [c, x] = cnv();
   x.translate(TS / 2, TS / 2); x.beginPath(); x.moveTo(0, TS * .42); x.bezierCurveTo(TS * .34, TS * .1, TS * .22, -TS * .38, 0, -TS * .44); x.bezierCurveTo(-TS * .22, -TS * .38, -TS * .34, TS * .1, 0, TS * .42);
@@ -201,47 +202,20 @@ C.bubble = (() => { const [c, x] = cnv();
   return c; })();
 // temizlenen hücrede kısa süre açan çiçek
 C.bloom = (() => { const [c, x] = cnv(); flower(x, 64, 64, 56, '#ffffff', '#F4B81F'); return c; })();
-// dokuda yaşayan zararsız bakteri (çubuk biçimli, sakin yüz)
-function rod(x, a, b, stroke) {
-  x.save(); x.translate(TS / 2, TS / 2); x.rotate(-.5);
-  x.beginPath(); x.roundRect(-TS * .36, -TS * .19, TS * .72, TS * .38, TS * .19);
-  const g = x.createLinearGradient(0, -TS * .19, 0, TS * .19); g.addColorStop(0, a); g.addColorStop(1, b); x.fillStyle = g; x.fill();
-  x.lineWidth = 4; x.strokeStyle = stroke; x.stroke();
-  x.fillStyle = 'rgba(255,255,255,.45)'; x.beginPath(); x.roundRect(-TS * .26, -TS * .14, TS * .3, TS * .07, TS * .035); x.fill();
-  x.restore();
-}
-C.flora = (() => { const [c, x] = cnv();
-  x.strokeStyle = '#4FA88A'; x.lineWidth = 3; x.lineCap = 'round';
-  for (const [sx, sy, ex, ey] of [[20, 86, 6, 100], [108, 42, 122, 28], [100, 56, 120, 60]]) { x.beginPath(); x.moveTo(sx, sy); x.quadraticCurveTo((sx + ex) / 2 + 6, (sy + ey) / 2 - 6, ex, ey); x.stroke(); }
-  rod(x, '#CDEFE2', '#74C9AA', '#3E9479');
-  eyes(x, TS / 2, TS * .5, TS * .11, TS * .07, 'happy');
-  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .025; x.lineCap = 'round'; x.beginPath(); x.arc(TS / 2, TS * .58, TS * .05, .3, Math.PI - .3); x.stroke();
-  return c; })();
-// antibiyotikten sonra dirençlenen bakteri: aynı bakterinin koyulaşmış, zırhlı, somurtkan hali (mor tıkaçla karışmasın)
-C.resist = (() => { const [c, x] = cnv();
-  x.beginPath(); x.arc(TS / 2, TS / 2, TS * .46, 0, 6.28);
-  x.fillStyle = rg(x, TS / 2, TS / 2, TS * .3, TS / 2, TS / 2, TS * .46, [[0, 'rgba(60,110,90,0)'], [1, 'rgba(60,110,90,.35)']]); x.fill();
-  x.lineWidth = 7; x.strokeStyle = '#4B5A7E'; x.stroke();
-  x.fillStyle = '#C9D3E8'; for (let i = 0; i < 8; i++) { const a = i / 8 * 6.28; x.beginPath(); x.arc(TS / 2 + Math.cos(a) * TS * .46, TS / 2 + Math.sin(a) * TS * .46, 4, 0, 6.28); x.fill(); }
-  rod(x, '#7FB59B', '#2F6B52', '#1D4A37');
-  eyes(x, TS / 2, TS * .5, TS * .11, TS * .07, 'grumpy');
-  x.fillStyle = '#2B0F22'; x.beginPath(); x.roundRect(TS * .43, TS * .6, TS * .14, TS * .04, 3); x.fill();
-  return c; })();
-// antibiyotik kapsülü: göz alıcı, ışıltılı (cazip görünmesi bilerek)
-C.capsule = (() => { const [c, x] = cnv();
-  x.fillStyle = rg(x, TS / 2, TS / 2, 0, TS / 2, TS / 2, TS / 2, [[0, 'rgba(255,120,130,.45)'], [1, 'rgba(255,120,130,0)']]); x.fillRect(0, 0, TS, TS);
-  x.save(); x.translate(TS / 2, TS / 2); x.rotate(-.6);
-  const w = TS * .62, h = TS * .3;
-  x.save(); x.beginPath(); x.roundRect(-w / 2, -h / 2, w, h, h / 2); x.clip();
-  let g = x.createLinearGradient(0, -h / 2, 0, h / 2); g.addColorStop(0, '#FF7A84'); g.addColorStop(1, '#C92A3A'); x.fillStyle = g; x.fillRect(-w / 2, -h / 2, w / 2, h);
-  g = x.createLinearGradient(0, -h / 2, 0, h / 2); g.addColorStop(0, '#FFFFFF'); g.addColorStop(1, '#D9DDE3'); x.fillStyle = g; x.fillRect(0, -h / 2, w / 2, h);
-  x.fillStyle = 'rgba(255,255,255,.6)'; x.fillRect(-w / 2 + 8, -h / 2 + 5, w - 16, 6);
-  x.restore();
-  x.beginPath(); x.roundRect(-w / 2, -h / 2, w, h, h / 2); x.lineWidth = 4; x.strokeStyle = '#8E2230'; x.stroke();
-  x.beginPath(); x.moveTo(0, -h / 2); x.lineTo(0, h / 2); x.lineWidth = 3; x.stroke();
-  x.restore();
-  x.fillStyle = '#FFF6C8';
-  for (const [sx, sy, r] of [[24, 30, 9], [104, 96, 7], [100, 26, 5]]) { x.beginPath(); x.moveTo(sx, sy - r); x.quadraticCurveTo(sx, sy, sx + r, sy); x.quadraticCurveTo(sx, sy, sx, sy + r); x.quadraticCurveTo(sx, sy, sx - r, sy); x.quadraticCurveTo(sx, sy, sx, sy - r); x.fill(); }
+// bağışıklık hücresi (akyuvar): tırtıklı zarlı, içinde loblu çekirdek görünen güler yüzlü hücre; virüslerin çoğalmasını bir süre durdurur
+C.immune = (() => { const [c, x] = cnv(), rnd = seeded(23);
+  x.fillStyle = rg(x, TS / 2, TS / 2, TS * .3, TS / 2, TS / 2, TS / 2, [[0, 'rgba(180,160,255,.35)'], [1, 'rgba(180,160,255,0)']]); x.fillRect(0, 0, TS, TS);
+  blob(x, TS / 2, TS / 2, TS * .45, 9, .045, rnd);
+  x.fillStyle = rg(x, TS * .4, TS * .36, 4, TS / 2, TS / 2, TS * .5, [[0, '#FFFFFF'], [.6, '#EDE5FF'], [1, '#C9B6F7']]); x.fill();
+  x.lineWidth = 5; x.strokeStyle = '#7A5CCC'; x.stroke();
+  // loblu çekirdek (üç yuvarlak parça) ve tanecikler
+  x.fillStyle = 'rgba(130,95,210,.45)';
+  for (const [cx, cy, r] of [[TS * .3, TS * .64, TS * .13], [TS * .5, TS * .73, TS * .14], [TS * .7, TS * .64, TS * .13]]) { x.beginPath(); x.arc(cx, cy, r, 0, 6.28); x.fill(); }
+  x.fillStyle = 'rgba(140,105,215,.45)';
+  for (const [cx, cy] of [[TS * .3, TS * .3], [TS * .72, TS * .34], [TS * .25, TS * .45], [TS * .78, TS * .48]]) { x.beginPath(); x.arc(cx, cy, 3, 0, 6.28); x.fill(); }
+  x.fillStyle = 'rgba(255,255,255,.9)'; x.beginPath(); x.ellipse(TS * .36, TS * .27, 10, 6, -.6, 0, 6.28); x.fill();
+  eyes(x, TS / 2, TS * .46, TS * .1, TS * .065, 'happy');
+  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .026; x.lineCap = 'round'; x.beginPath(); x.arc(TS / 2, TS * .56, TS * .055, .3, Math.PI - .3); x.stroke();
   return c; })();
 // şişkin mukoza: komşu hücrelerle üst üste binip kesintisiz, kabarık bir bant oluşturur
 C.swell = (() => { const [c, x] = cnv(), rnd = seeded(41);

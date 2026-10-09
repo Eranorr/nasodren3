@@ -19,7 +19,7 @@ const sfx = name => { if (!prog.muted && mode !== 'demo') playSfx(name); };
 
 // DOM ikonları aynı dokulardan
 const ICON = { mucus: C.mucus[0], gold: C.gold, serum: C.serum, breeze: C.breeze, polyp: C.polyp[0], septum: C.septum, plug: C.plug, crust: C.crust,
-  virus: C.virus, infected: C.infected[0], antibiotic: C.capsule, flora: C.flora, resist: C.resist, swell: C.swell };
+  virus: C.virus, infected: C.infected[0], immune: C.immune, swell: C.swell };
 const iconURL = {};
 for (const k in ICON) iconURL[k] = ICON[k].toDataURL();
 document.querySelectorAll('img[data-icon]').forEach(im => im.src = iconURL[im.dataset.icon]);
@@ -40,20 +40,26 @@ stageEl.prepend(app.canvas);
 app.ticker.maxFPS = 0;
 
 const T = {};
-for (const k of ['ball', 'face', 'soft', 'dot', 'gold', 'serum', 'breeze', 'septum', 'crust', 'plug', 'portal', 'fresh', 'petal', 'virus', 'petals', 'eye', 'face2', 'leaf', 'tuber', 'bubble', 'bloom', 'flora', 'resist', 'swell']) T[k] = PIXI.Texture.from(C[k]);
-T.antibiotic = PIXI.Texture.from(C.capsule);
+for (const k of ['ball', 'face', 'soft', 'dot', 'gold', 'serum', 'breeze', 'septum', 'crust', 'plug', 'portal', 'fresh', 'petal', 'virus', 'petals', 'eye', 'face2', 'leaf', 'tuber', 'bubble', 'bloom', 'immune', 'swell']) T[k] = PIXI.Texture.from(C[k]);
 T.mucus = C.mucus.map(c => PIXI.Texture.from(c));
 T.infected = C.infected.map(c => PIXI.Texture.from(c));
 T.polyp = C.polyp.map(c => PIXI.Texture.from(c));
 
 const petalLayer = new PIXI.Container();
 const board = new PIXI.Container();
-app.stage.addChild(petalLayer, board);
+// Şekilli bölümde "sinüsün içindeyiz": ekranı dolduran doku (bleedS), ostiumdan sızan ışık (lightS kapalı, lightOpenS açık ostium)
+const bleedS = new PIXI.Sprite(), lightS = new PIXI.Sprite(), lightOpenS = new PIXI.Sprite();
+lightS.anchor.set(.5); lightOpenS.anchor.set(.5);
+app.stage.addChild(bleedS, petalLayer, board);
 const shadowG = new PIXI.Graphics(), baseG = new PIXI.Graphics(), inflamG = new PIXI.Graphics(), rimG = new PIXI.Graphics();   // inflamG: iltihap kızarıklığı, temizlendikçe solar
-const cleanLayer = new PIXI.Container(), bloomLayer = new PIXI.Container(), gateLayer = new PIXI.Container(), floraLayer = new PIXI.Container();
+const cleanLayer = new PIXI.Container(), bloomLayer = new PIXI.Container(), gateLayer = new PIXI.Container();
 const obsLayer = new PIXI.Container(), itemLayer = new PIXI.Container(), moverLayer = new PIXI.Container(), virusLayer = new PIXI.Container();
 const snakeLayer = new PIXI.Container(), maskG = new PIXI.Graphics(), fxLayer = new PIXI.Container(), popLayer = new PIXI.Container(), flashG = new PIXI.Graphics();
-board.addChild(shadowG, baseG, inflamG, cleanLayer, bloomLayer, rimG, floraLayer, gateLayer, obsLayer, itemLayer, moverLayer, virusLayer, snakeLayer, maskG, fxLayer, popLayer, flashG);
+const floorLayer = new PIXI.Container(), floorMaskG = new PIXI.Graphics();   // zemin yuvarlak köşelere kırpılır
+const floorS = new PIXI.Sprite();   // şekilli bölümde pürüzsüz hatlı sinüs zemini (drawSinusFloor)
+const driftLayer = new PIXI.Container();   // ostiuma süzülen parçacıklar
+floorLayer.addChild(baseG, floorS, inflamG, cleanLayer, bloomLayer, driftLayer); floorLayer.mask = floorMaskG;
+board.addChild(shadowG, floorLayer, floorMaskG, rimG, lightS, lightOpenS, gateLayer, obsLayer, itemLayer, moverLayer, virusLayer, snakeLayer, maskG, fxLayer, popLayer, flashG);
 snakeLayer.mask = maskG; flashG.alpha = 0; inflamG.alpha = 0;
 const gateMaskG = new PIXI.Graphics(); board.addChild(gateMaskG); gateLayer.mask = gateMaskG;   // ostium ışıması çerçevenin dışına taşmasın
 
@@ -106,12 +112,24 @@ const ix = new Float32Array(MAXSEG), iy = new Float32Array(MAXSEG);
 let len = 0, prevLen = 0, grow = 0, dir = 0, moveDir = 0, queue = [];
 let acc = 0, gameTime = 0, levelStart = 0;
 let eaten = 0, target = 0, exitOpen = false, exitX = 0, exitY = 0, exitDir = 0, exitSteps = 0, exits = [];   // exits: tahta dışındaki çıkış hücreleri; exitX/Y ilki
-let combo = 0, lastEat = -1e9, boostUntil = 0, slowUntil = 0, breezeUntil = 0;
-let shake = 0, stepCount = 0, autoBot = false, botBait = false, deathReason = '';   // autoBot: denge testi için botun bölüm oynaması (yalnızca #debug)
+let combo = 0, lastEat = -1e9, boostUntil = 0, slowUntil = 0, breezeUntil = 0, immuneUntil = 0;
+let shake = 0, stepCount = 0, autoBot = false, deathReason = '';   // autoBot: denge testi için botun bölüm oynaması (yalnızca #debug)
 const obstacle = new Uint8Array(COLS * ROWS), swellAt = new Uint8Array(COLS * ROWS), cleaned = new Uint8Array(COLS * ROWS), scratch = new Uint8Array(COLS * ROWS);
 let cleanedCount = 0, freeCells = 1, swellStage = 0;   // swellAt: şişlik hücresinin çekileceği aşama (1 iç, 2 dış katman)
+
+// Tahtanın yuvarlak köşeleri: yarıçap hücre biriminde. Yayın dışında kalan köşe hücreleri duvardır (her köşede 8 hücre,
+// tamamen çerçevenin altında kalır). Yayın üstüne denk gelen hücrelerde oynanır ama nesne, virüs ve çıkış çıkmaz.
+const CORNER = 7;
+const cornerWall = new Uint8Array(COLS * ROWS), rimCell = new Uint8Array(COLS * ROWS);
+for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+  const ex = CORNER - Math.min(x + .5, COLS - x - .5), ey = CORNER - Math.min(y + .5, ROWS - y - .5);
+  if (ex <= 0 || ey <= 0) continue;
+  const d = Math.hypot(ex, ey);
+  if (d > CORNER + .2) cornerWall[y * COLS + x] = 1; else if (d > CORNER - .3) rimCell[y * COLS + x] = 1;
+}
 const cleanAnims = [];
-let items = [], movers = [], viruses = [], flora = [];
+const CLEAN = 1.42;   // temiz doku lekesinin çapı (hücre): komşu lekeler kesintisiz bir iz oluşturur, 2x2 temiz alan tamamen dolar
+let items = [], movers = [], viruses = [];
 let carriedAt = [], hurtUntil = 0, virusWait = 0;   // carriedAt: virüslü mukusun yutulduğu adım (gövdede ilerler)
 let lv = null;                         // bölüm istatistikleri
 let gameSneezes = 0;
@@ -139,48 +157,191 @@ function layout() {
   calloutBand = Math.min(Math.max(0, slack - pad * 2 - 8), 100);
   baseX = Math.round((w - boardW) / 2); baseY = Math.round(calloutBand + (slack - calloutBand) / 2) - 2;
   board.position.set(baseX, baseY);
-  shadowG.clear().roundRect(-pad, -pad + cell * .28, boardW + pad * 2, boardH + pad * 2, cell * .9).fill({ color: 0x9C3C62, alpha: .16 });
-  rimG.clear().roundRect(-pad, -pad, boardW + pad * 2, boardH + pad * 2, cell * .9).stroke({ width: pad, color: 0xE06C8F, alignment: 1 })
-    .roundRect(-pad * .5, -pad * .5, boardW + pad, boardH + pad, cell * .75).stroke({ width: 2, color: 0xFFFFFF, alpha: .5 });
+  const cr = CORNER * cell;   // zeminin köşe yarıçapı; çerçeve aynı merkezli yaylarla dışa doğru büyür
+  shadowG.clear().roundRect(-pad, -pad + cell * .28, boardW + pad * 2, boardH + pad * 2, cr + pad).fill({ color: 0x9C3C62, alpha: .16 });
+  rimG.clear().roundRect(-pad, -pad, boardW + pad * 2, boardH + pad * 2, cr + pad).stroke({ width: pad, color: 0xE06C8F, alignment: 1 })
+    .roundRect(-pad * .5, -pad * .5, boardW + pad, boardH + pad, cr + pad * .5).stroke({ width: 2, color: 0xFFFFFF, alpha: .5 });
   drawBoard();
-  maskG.clear().rect(-2, -2, boardW + 4, boardH + 4).fill(0xffffff);
-  gateMaskG.clear().roundRect(-pad, -pad, boardW + pad * 2, boardH + pad * 2, cell * .9).fill(0xffffff);
-  flashG.clear().roundRect(-pad, -pad, boardW + pad * 2, boardH + pad * 2, cell * .9).fill(0xFF3355);
+  flashG.clear().roundRect(-pad, -pad, boardW + pad * 2, boardH + pad * 2, cr + pad).fill(0xFF3355);
   for (let i = 0; i < cleanSprites.length; i++) cleanSprites[i].position.set(((i % COLS) + .5) * cell, (((i / COLS) | 0) + .5) * cell);
   for (const a of cleanAnims) a.done = false;
-  for (let i = 0; i < cleanSprites.length; i++) if (cleaned[i]) cleanSprites[i].width = cleanSprites[i].height = cell * .94;
+  for (let i = 0; i < cleanSprites.length; i++) if (cleaned[i]) cleanSprites[i].width = cleanSprites[i].height = cell * CLEAN;
   placeObstacleSprites();
   for (const it of items) { placeItem(it, true); }
   for (const m of movers) m.s.width = m.s.height = cell * 1.1;
   placeGate();
+  applyInside();
 }
-// Şekilli bölümde duvar koyu mukoza dokusu, boşluk yuvarlak hatlı açık zemin olarak çizilir
+// Zemin hücrelere bölünmeden tek parça, düz bir mukoza yüzeyi olarak çizilir; ızgaraya bağlı olmayan hafif lekeler doku verir.
+// Şekilli bölümde zemin, görseldeki sinüs hattıyla birebir çizilir (drawSinusFloor); dışı düz renktir.
 const isWall = i => obstacle[i] === 5;
 function drawBoard() {
-  const rnd = seeded(7), shades = [0xF7C6C1, 0xF5C0BC, 0xF8CBC6, 0xF6C3BF];
-  baseG.clear();
-  if (!cfg.shape) baseG.roundRect(0, 0, boardW, boardH, cell * .5).fill({ color: 0xEBA3A6 });
-  else {
-    baseG.roundRect(0, 0, boardW, boardH, cell * .5).fill({ color: 0xC65A7C });
-    for (let i = 0; i < obstacle.length; i++) if (isWall(i))
-      baseG.circle(((i % COLS) + .5) * cell + (rnd() - .5) * cell * .4, (((i / COLS) | 0) + .5) * cell + (rnd() - .5) * cell * .4, cell * (.3 + rnd() * .25)).fill({ color: rnd() < .5 ? 0xD06A8A : 0xB84E70, alpha: .7 });
-    const h = cell * .24, g = cell * .06;
-    for (let i = 0; i < obstacle.length; i++) if (!isWall(i)) baseG.roundRect((i % COLS) * cell - h, ((i / COLS) | 0) * cell - h, cell + h * 2, cell + h * 2, cell * .6).fill({ color: 0xF4BFCB });
-    for (let i = 0; i < obstacle.length; i++) if (!isWall(i)) baseG.roundRect((i % COLS) * cell - g, ((i / COLS) | 0) * cell - g, cell + g * 2, cell + g * 2, cell * .45).fill({ color: 0xEBA3A6 });
+  const rnd = seeded(7), FLOOR = 0xF6C3BF;
+  baseG.clear(); floorS.visible = !!cfg.shape;
+  if (!cfg.shape) {
+    baseG.rect(0, 0, boardW, boardH).fill({ color: FLOOR });
+    for (let k = 0; k < COLS * ROWS / 5; k++) {
+      const x = rnd() * COLS, y = rnd() * ROWS, r = cell * (.35 + rnd() * .6), light = rnd() < .5;
+      if (!isWall((y | 0) * COLS + (x | 0))) baseG.circle(x * cell, y * cell, r).fill({ color: light ? 0xFAD3CF : 0xF0B4B3, alpha: .45 });
+    }
+  } else {
+    drawSinusFloor();   // dış alan saydam: altındaki ekran boyu doku (bleedS) görünür
   }
-  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
-    const sh = shades[(rnd() * 4) | 0];
-    if (!isWall(y * COLS + x)) baseG.roundRect(x * cell + 1.5, y * cell + 1.5, cell - 3, cell - 3, cell * .3).fill({ color: sh });
+  inflamG.clear().rect(0, 0, boardW, boardH).fill({ color: 0xE0304F });
+}
+// Sinüs zemini: shape.outline hattı (ostium kanalı dahil), kenarda ince açık bir çizgi ve dışa sönen bir ışımayla canvas'a çizilir.
+// Çarpışma ızgarada kalır (shape.grid): merkezi hattın içinde kalan hücreler oynanır.
+let floorTex = null;
+function drawSinusFloor() {
+  // tuval ekran boyunda: ostium kanalı tahtanın kenarında bitmez, ekranın kenarına kadar uzanır
+  const res = app.renderer.resolution, k = cell * res, cw = Math.ceil(app.screen.width * res), ch = Math.ceil(app.screen.height * res);
+  const offX = baseX * res, offY = baseY * res, o = cfg.shape.outline, n = o.length / 2, path = new Path2D();
+  // noktalar arasından orta noktalara eğri: köşesiz, pürüzsüz hat
+  const P = i => [o[(i % n) * 2] * k + offX, o[(i % n) * 2 + 1] * k + offY], M = i => { const a = P(i), b = P(i + 1); return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; };
+  let area = 0; for (let i = 0; i < n; i++) { const a = P(i), b = P(i + 1); area += a[0] * b[1] - b[0] * a[1]; }
+  path.moveTo(...M(n - 1));
+  for (let i = 0; i < n; i++) path.quadraticCurveTo(...P(i), ...M(i));
+  path.closePath();
+  // kanalın tahta dışındaki uzantısı: hatla aynı yönde çizilir ki nonzero dolguda birleşsin
+  let gx0 = COLS, gx1 = -1;
+  cfg.shape.grid.forEach(row => { for (let x = 0; x < COLS; x++) if (row[x] === '=') { gx0 = Math.min(gx0, x); gx1 = Math.max(gx1, x); } });
+  if (gx1 >= 0) {
+    const x0 = gx0 * k + offX, x1 = (gx1 + 1) * k + offX, y0 = exitY < 0 ? -k : ROWS * k + offY - k, y1 = exitY < 0 ? offY + k : ch + k;
+    const pts = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]; if (area < 0) pts.reverse();
+    path.moveTo(...pts[0]); for (const q of pts.slice(1)) path.lineTo(...q); path.closePath();
   }
-  inflamG.clear().roundRect(0, 0, boardW, boardH, cell * .5).fill({ color: 0xE0304F });
+  const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+  const x = cv.getContext('2d'), rnd = seeded(11);
+  x.save(); x.shadowColor = 'rgba(250,214,222,.95)'; x.shadowBlur = k * .7; x.fillStyle = '#F6C3BF'; x.fill(path); x.restore();   // dış ışıma
+  x.save(); x.clip(path); x.globalAlpha = .45;
+  for (let j = 0; j < COLS * ROWS / 5; j++) {
+    const sx = rnd() * cw, sy = rnd() * ch, r = k * (.35 + rnd() * .6);
+    x.fillStyle = rnd() < .5 ? '#FAD3CF' : '#F0B4B3'; x.beginPath(); x.arc(sx, sy, r, 0, 6.28); x.fill();
+  }
+  x.globalAlpha = .9; x.strokeStyle = '#FCE6E2'; x.lineWidth = k * .18; x.stroke(path);   // iç kenar çizgisi (kırpıldığı için yarısı görünür)
+  x.restore();
+  if (floorTex) floorTex.destroy(true);
+  floorTex = new PIXI.Texture({ source: new PIXI.CanvasSource({ resource: cv }) });
+  floorS.texture = floorTex; floorS.position.set(-baseX, -baseY); floorS.width = app.screen.width; floorS.height = app.screen.height;
+}
+/* =========================================================================
+   SİNÜSÜN İÇİNDEYİZ (şekilli bölümler): çerçeve ve taç yaprakları gizlenir, doku ekranı doldurur;
+   zeminde parçacıklar ostiuma süzülür (mukosiliyer temizlik);
+   tek ışık ostiumdan sızar, ostium açılınca genişler; sahne yavaş bir nefes ritmiyle kabarıp iner.
+   ========================================================================= */
+const BREATH_MS = 4500;
+let ostX = 0, ostY = 0, lightOpen = 0, bleedTex = null, lightTexs = [];
+const flowBuf = new Int16Array(COLS * ROWS), farCells = [], drift = [];
+for (let i = 0; i < 26; i++) { const s = new PIXI.Sprite(T.dot); s.anchor.set(.5); s.tint = 0xFFF4F2; driftLayer.addChild(s); drift.push({ s, x: 0, y: 0, tx: 0, ty: 0, v: 1, a: 0, ph: 0, sz: .2 }); }
+
+function applyInside() {
+  const on = !!cfg.shape;
+  document.body.classList.toggle('inside', on);
+  petalLayer.visible = !on; shadowG.visible = rimG.visible = !on; inflamG.visible = !on;
+  bleedS.visible = lightS.visible = lightOpenS.visible = on; driftLayer.visible = on && !REDUCED;   // hareket azaltılmışsa parçacık yok
+  // maskeler: şekilli bölümde çerçeve yok, zemin köşesiz ve ostium ışıması ekran boyunca serbest; diğerlerinde yuvarlak çerçeve
+  const pad = Math.round(cell * .34), cr = CORNER * cell;
+  floorMaskG.clear();
+  if (on) floorMaskG.rect(-baseX, -baseY, app.screen.width, app.screen.height).fill(0xffffff); else floorMaskG.roundRect(0, 0, boardW, boardH, cr).fill(0xffffff);
+  maskG.clear();   // akış: şekilli bölümde ekranın kenarına kadar kanalda görünür, diğerlerinde tahtada kırpılır
+  if (on) maskG.rect(-baseX, -baseY, app.screen.width, app.screen.height).fill(0xffffff); else maskG.rect(-2, -2, boardW + 4, boardH + 4).fill(0xffffff);
+  gateMaskG.clear();
+  if (on) gateMaskG.rect(-baseX, -baseY, app.screen.width, app.screen.height).fill(0xffffff);
+  else gateMaskG.roundRect(-pad, -pad, boardW + pad * 2, boardH + pad * 2, cr + pad).fill(0xffffff);
+  if (!on) { floorS.tint = 0xFFFFFF; return; }
+  // ostiumun sinüse açılan iç ucu (kanalın şekle değen ucu), hücre biriminde
+  let sx = 0, n = 0, inner = null;
+  cfg.shape.grid.forEach((row, y) => { for (let x = 0; x < COLS; x++) if (row[x] === '=') { sx += x; n++; inner = inner === null ? y : (exitY < 0 ? Math.max(inner, y) : Math.min(inner, y)); } });
+  ostX = sx / n + .5; ostY = inner + (exitY < 0 ? 1 : 0);
+  buildFlow(); buildBleed(); buildLight();
+  for (const p of drift) respawnDrift(p, true);
+}
+// ekranı dolduran doku: ortası sinüsün dış rengi, kenarlara doğru koyulaşır (vinyet)
+function buildBleed() {
+  const w = Math.ceil(app.screen.width), h = Math.ceil(app.screen.height), cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const x = cv.getContext('2d'), cx = baseX + boardW / 2, cy = baseY + boardH / 2, R = Math.hypot(Math.max(cx, w - cx), Math.max(cy, h - cy));
+  const g = x.createRadialGradient(cx, cy, 0, cx, cy, R);
+  g.addColorStop(0, '#C65A7C'); g.addColorStop(.55, '#B54E70'); g.addColorStop(1, '#7E2A4B');
+  x.fillStyle = g; x.fillRect(0, 0, w, h);
+  const rnd = seeded(5); x.globalAlpha = .18;   // hafif, büyük lekeler: düz değil canlı doku
+  for (let i = 0; i < 26; i++) { x.fillStyle = rnd() < .5 ? '#D46A8C' : '#9E3A5F'; x.beginPath(); x.arc(rnd() * w, rnd() * h, cell * (1.5 + rnd() * 3), 0, 6.28); x.fill(); }
+  if (bleedTex) bleedTex.destroy(true);
+  bleedS.texture = bleedTex = new PIXI.Texture({ source: new PIXI.CanvasSource({ resource: cv }) });
+  bleedS.width = w; bleedS.height = h;
+}
+// ostiumdan sızan ışık: ortası saydam, dışa doğru koyulaşan karanlık; kapalı ve açık ostium için iki doku
+function buildLight() {
+  const gx = ostX * cell, gy = ostY * cell, w = app.screen.width, h = app.screen.height;
+  const H = Math.hypot(Math.max(gx + baseX, w - gx - baseX), Math.max(gy + baseY, h - gy - baseY)) * 1.05;
+  const make = (r0, r1, dark) => {
+    const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d');
+    const g = x.createRadialGradient(256, 256, 0, 256, 256, 256), a = Math.min(.9, r0 * cell / H), b = Math.min(.99, r1 * cell / H);
+    g.addColorStop(0, 'rgba(42,7,22,0)'); g.addColorStop(a, 'rgba(42,7,22,0)');
+    g.addColorStop((a + b) / 2, `rgba(42,7,22,${dark * .4})`); g.addColorStop(b, `rgba(42,7,22,${dark})`); g.addColorStop(1, `rgba(42,7,22,${dark})`);
+    x.fillStyle = g; x.fillRect(0, 0, 512, 512);
+    return new PIXI.Texture({ source: new PIXI.CanvasSource({ resource: c }) });
+  };
+  for (const t of lightTexs) t.destroy(true);
+  lightTexs = [make(2.5, 15, .34), make(6, 24, .22)];
+  lightS.texture = lightTexs[0]; lightOpenS.texture = lightTexs[1];
+  for (const sp of [lightS, lightOpenS]) { sp.position.set(gx, gy); sp.width = sp.height = H * 2; }
+  lightS.baseScale = lightS.scale.x;
+}
+// ostiuma akış: '=' hücrelerinden geriye yol mesafesi (duvar dışındaki her hücre geçilir)
+function buildFlow() {
+  flowBuf.fill(-1); farCells.length = 0;
+  const g = cfg.shape.grid, q = [];
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) if (g[y][x] === '=') { flowBuf[y * COLS + x] = 0; q.push(x, y); }
+  for (let h = 0; h < q.length;) {
+    const x = q[h++], y = q[h++], d0 = flowBuf[y * COLS + x];
+    for (let d = 0; d < 4; d++) {
+      const X = x + DX[d], Y = y + DY[d], i = Y * COLS + X;
+      if (X < 0 || Y < 0 || X >= COLS || Y >= ROWS || flowBuf[i] >= 0 || g[Y][X] === '#') continue;
+      flowBuf[i] = d0 + 1; q.push(X, Y);
+    }
+  }
+  for (let i = 0; i < flowBuf.length; i++) if (flowBuf[i] > 6) farCells.push(i);
+}
+function respawnDrift(p, scatter) {
+  if (!farCells.length) return;
+  const i = farCells[(Math.random() * farCells.length) | 0];
+  p.x = p.tx = i % COLS; p.y = p.ty = (i / COLS) | 0; p.a = scatter ? Math.random() : 0;
+  p.v = .45 + Math.random() * .4; p.ph = Math.random() * 6.28; p.sz = .12 + Math.random() * .14;
+}
+function nextDrift(p) {
+  const x = p.tx, y = p.ty, f = flowBuf[y * COLS + x];
+  if (f <= 0) return respawnDrift(p, false);
+  const opts = [];
+  for (let d = 0; d < 4; d++) { const X = x + DX[d], Y = y + DY[d]; if (X >= 0 && Y >= 0 && X < COLS && Y < ROWS && flowBuf[Y * COLS + X] >= 0 && flowBuf[Y * COLS + X] < f) opts.push(X, Y); }
+  if (!opts.length) return respawnDrift(p, false);
+  const k = ((Math.random() * opts.length / 2) | 0) * 2; p.tx = opts[k]; p.ty = opts[k + 1];
+}
+function updateInside(dt, now) {
+  if (!cfg.shape) return;
+  // nefes: ışık ve karanlık birkaç saniyede bir hafifçe kabarıp iner
+  const br = REDUCED ? 0 : Math.sin(now * 6.283 / BREATH_MS);
+  lightOpen += ((exitOpen ? 1 : 0) - lightOpen) * (1 - Math.exp(-dt * .003));
+  const sc = (lightS.baseScale || lightS.scale.x) * (1 + .025 * br);
+  lightS.scale.set(sc); lightOpenS.scale.set(sc);
+  lightS.alpha = (1 - lightOpen) * (.92 - .08 * br); lightOpenS.alpha = lightOpen * (.92 - .08 * br);
+  if (REDUCED) return;
+  for (const p of drift) {
+    const k = p.v * dt / 1000, dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy);
+    if (d <= k) { p.x = p.tx; p.y = p.ty; nextDrift(p); } else { p.x += dx / d * k; p.y += dy / d * k; }
+    p.a = Math.min(1, p.a + dt / 700);
+    const near = flowBuf[Math.round(p.y) * COLS + Math.round(p.x)];   // ostiuma yaklaşınca söner
+    p.s.alpha = .32 * p.a * Math.min(1, Math.max(0, near) / 3);
+    p.s.position.set((p.x + .5 + Math.sin(now * .0013 + p.ph) * .18) * cell, (p.y + .5 + Math.cos(now * .0011 + p.ph) * .18) * cell);
+    p.s.width = p.s.height = cell * p.sz * (1 + .15 * br);
+  }
 }
 new ResizeObserver(() => { app.renderer.resize(Math.max(1, stageEl.clientWidth), Math.max(1, stageEl.clientHeight)); layout(); }).observe(stageEl);
 
 /* =========================================================================
    BÖLÜM KURULUMU
    ========================================================================= */
-// engel türleri: 1 polip, 2 sert mukus, 3 raf, 4 dirençli bakteri, 5 duvar (çizilmez, tahtanın parçası), 6 şişlik, 7 ostium tıkacı
-const TEXOF = { 1: i => T.polyp[i % 3], 2: () => T.crust, 3: () => T.septum, 4: () => T.resist, 6: () => T.swell, 7: () => T.swell };
+// engel türleri: 1 polip, 2 sert mukus, 3 raf, 5 duvar (çizilmez, tahtanın parçası), 6 şişlik, 7 ostium tıkacı
+const TEXOF = { 1: i => T.polyp[i % 3], 2: () => T.crust, 3: () => T.septum, 6: () => T.swell, 7: () => T.swell };
 function placeObstacleSprites() {
   let k = 0;
   for (let i = 0; i < obstacle.length; i++) {
@@ -188,7 +349,7 @@ function placeObstacleSprites() {
     let s = obsPool[k]; if (!s) { s = new PIXI.Sprite(T.dot); s.anchor.set(.5); obsLayer.addChild(s); obsPool[k] = s; }
     s.texture = TEXOF[v](i); s.visible = true;
     s.position.set(((i % COLS) + .5) * cell, (((i / COLS) | 0) + .5) * cell);
-    s.width = s.height = cell * (v === 3 ? 1.04 : v === 4 ? 1.15 : v >= 6 ? 1.3 : 1.08); s.rotation = v === 3 || v === 4 ? 0 : (i * 1.7) % 6.28;
+    s.width = s.height = cell * (v === 3 ? 1.04 : v >= 6 ? 1.3 : 1.08); s.rotation = v === 3 ? 0 : (i * 1.7) % 6.28;
     s.tint = v === 7 ? 0xFFD2B4 : v === 6 && swellAt[i] === 2 ? 0xE6E6E6 : 0xFFFFFF;
     k++;
   }
@@ -199,6 +360,7 @@ function setupBoard(c) {
   cfg = c;
   obstacle.fill(0); swellAt.fill(0); swellStage = 0;
   if (c.shape) buildShape(c.shape);
+  for (let i = 0; i < obstacle.length; i++) if (cornerWall[i]) obstacle[i] = 5;
   for (const r of c.obs) {
     const kind = (r.w === 1 || r.h === 1) && r.w * r.h > 2 ? 3 : 1;
     for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) obstacle[y * COLS + x] = kind;
@@ -217,29 +379,28 @@ function setupBoard(c) {
   for (const it of items) it.s.destroy(); items = [];
   for (const v of viruses) v.s.destroy(); viruses = []; carriedAt = []; hurtUntil = 0; virusWait = 0;
   len = 4; grow = 0; dir = moveDir = 0; queue.length = 0; stepCount = 0;
-  const [sx, sy] = c.start || [9, ROWS - 4];
+  const [sx, sy] = c.start || [COLS >> 1, ROWS - 4];
   for (let i = 0; i < len; i++) { bx[i] = sx; by[i] = sy + i; px[i] = bx[i]; py[i] = by[i]; }
   prevLen = len;
   for (let i = 0; i < len; i++) cleanCell(bx[i], by[i], true);
   target = c.target; eaten = 0; exitOpen = false; gateLayer.visible = !!c.shape; placeGate();   // şekilli bölümde ostium baştan görünür, kapalı
-  combo = 0; lastEat = -1e9; boostUntil = slowUntil = breezeUntil = 0; acc = 0;
+  combo = 0; lastEat = -1e9; boostUntil = slowUntil = breezeUntil = immuneUntil = 0; acc = 0;
   levelStart = gameTime;
-  lv = { sneezes: 0, golds: 0, hardened: 0, maxLen: len, trapped: 0, carried: 0, expelled: 0, replicated: 0, hits: 0, ab: 0, abSeen: 0 };
-  for (const f of flora) f.s.destroy(); flora = [];
-  for (let i = 0; i < (c.flora || 0); i++) addFlora();
+  lv = { sneezes: 0, golds: 0, hardened: 0, maxLen: len, trapped: 0, carried: 0, expelled: 0, replicated: 0, hits: 0, immunes: 0, immuneSeen: 0 };
   spawn('mucus'); spawn('mucus');
   for (let i = 0; i < (c.virus || 0); i++) spawnVirus();
   renderSnake(1, 16, performance.now());
+  applyInside();
 }
 
 /* =========================================================================
-   SİNÜS ŞEKLİ: duvar, şişkin mukoza katmanları ve ostium
+   SİNÜS ŞEKLİ: duvar, şişkin mukoza katmanları (bölüm swell: true verirse) ve ostium
    ========================================================================= */
-const SWELL_AT = [.4, .8];          // şişliğin iç ve dış katmanının çekildiği tıkanıklık oranları
+const SWELL_AT = [.4, .8];          // şişliğin iç ve dış katmanının çekildiği tıkanıklık oranları (bölüm swellAt ile değiştirebilir)
 function buildShape(shape) {
   exits = [];
   for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
-    const ch = shape[y][x];
+    const ch = shape.grid[y][x];
     if (ch === '#') obstacle[y * COLS + x] = 5;
     else if (ch === '=') {
       obstacle[y * COLS + x] = 7;
@@ -248,6 +409,7 @@ function buildShape(shape) {
     }
   }
   [exitX, exitY] = exits[0];
+  if (!cfg.swell) return;
   // duvara ya da kanala bitişik iki katman şişkin mukoza: önce dış katman, sonra onun içi
   const closed = (x, y) => x < 0 || y < 0 || x >= COLS || y >= ROWS || obstacle[y * COLS + x] === 5 || obstacle[y * COLS + x] === 7;
   const layer = (stage, touches) => {
@@ -267,7 +429,8 @@ function shrinkFx(x, y) {
   p.s.rotation = ((y * COLS + x) * 1.7) % 6.28; p.vr = 0; p.vx = p.vy = 0; p.max = p.life = 450; p.size = cell * 1.3;
 }
 function recedeSwelling() {
-  while (swellStage < 2 && eaten / target >= SWELL_AT[swellStage]) {
+  const at = cfg.swellAt || SWELL_AT;
+  while (swellStage < 2 && eaten / target >= at[swellStage]) {
     const stage = ++swellStage; let n = 0;
     for (let i = 0; i < obstacle.length; i++) if (obstacle[i] === 6 && swellAt[i] === stage) {
       obstacle[i] = 0; const x = i % COLS, y = (i / COLS) | 0;
@@ -288,24 +451,29 @@ function openOstium() {
 function bodyAt(x, y, skipTail) { const n = skipTail ? len - 1 : len; for (let i = 0; i < n; i++) if (bx[i] === x && by[i] === y) return true; return false; }
 function itemAt(x, y) { for (const it of items) if (it.x === x && it.y === y) return it; return null; }
 function moverAt(x, y) { for (const m of movers) if (m.x === x && m.y === y) return m; return null; }
-function floraAt(x, y) { for (const f of flora) if (f.x === x && f.y === y) return f; return null; }
+// iki ya da daha fazla yanı duvar, engel ya da şişlik olan hücre: köşe, cep ya da çıkmaz
+function tightCell(x, y) {
+  let n = 0;
+  for (let d = 0; d < 4; d++) { const X = x + DX[d], Y = y + DY[d]; if (X < 0 || Y < 0 || X >= COLS || Y >= ROWS || obstacle[Y * COLS + X]) n++; }
+  return n >= 2;
+}
 function occupied(x, y) { return obstacle[y * COLS + x] || bodyAt(x, y) || itemAt(x, y) || moverAt(x, y) || virusAt(x, y); }
 
 function spawn(type) {
   for (let pass = 0; pass < 2; pass++) {
     const cand = [];
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
-      if (occupied(x, y)) continue;
+      if (occupied(x, y) || rimCell[y * COLS + x]) continue;
       if (pass === 0 && Math.abs(x - bx[0]) + Math.abs(y - by[0]) < 3) continue;
       if (pass === 0 && movers.some(m => m.y === y)) continue;          // tıkaç hattına mukus bırakma
-      if (pass === 0 && floraAt(x, y)) continue;
+      if (pass === 0 && tightCell(x, y)) continue;                      // köşeye ve çıkmaza mukus bırakma: uzun akışla dönmek zor
       cand.push(x, y);
     }
     if (!cand.length) continue;
     const k = ((Math.random() * cand.length / 2) | 0) * 2;
     const vr = (Math.random() * 3) | 0, tex = type === 'mucus' ? T.mucus[vr] : T[type];
     const s = new PIXI.Sprite(tex); s.anchor.set(.5); itemLayer.addChild(s);
-    const life = type === 'gold' ? 6000 : type === 'serum' || type === 'breeze' || type === 'antibiotic' ? 8000 : Infinity;
+    const life = type === 'gold' ? 6000 : type === 'serum' || type === 'breeze' || type === 'immune' ? 8000 : Infinity;
     const it = { type, x: cand[k], y: cand[k + 1], s, born: gameTime, life, ph: Math.random() * 6.28, pop: 0, var: vr, infected: false };
     placeItem(it, true); items.push(it);
     return it;
@@ -324,12 +492,12 @@ function openExit() {
   exitOpen = true;
   if (cfg.shape) openOstium(); else pickExit();
   gateLayer.visible = true; placeGate();
-  for (const it of items.slice()) if ((it.type === 'mucus' && !it.infected) || it.type === 'antibiotic') removeItem(it);   // virüslü olanlar kalır, hâlâ taşınabilir
+  for (const it of items.slice()) if ((it.type === 'mucus' && !it.infected) || it.type === 'immune') removeItem(it);   // virüslü olanlar kalır, hâlâ taşınabilir
   callout('Ostium açıldı!', 'Akışı parlayan çıkışa götür'); sfx('open'); hudBar();
 }
 function pickExit() {
   const opts = [];
-  const free = (x, y) => !obstacle[y * COLS + x];
+  const free = (x, y) => !obstacle[y * COLS + x] && !rimCell[y * COLS + x];
   for (let x = 1; x < COLS - 1; x++) { if (free(x, 0)) opts.push([x, -1]); if (free(x, ROWS - 1)) opts.push([x, ROWS]); }
   for (let y = 1; y < ROWS - 1; y++) { if (free(0, y)) opts.push([-1, y]); if (free(COLS - 1, y)) opts.push([COLS, y]); }
   const d = o => Math.abs(o[0] - bx[0]) + Math.abs(o[1] - by[0]);
@@ -348,49 +516,23 @@ function placeGate() {
 }
 
 /* =========================================================================
-   ANTİBİYOTİK VE DİRENÇ: kapsül virüse etki etmez. Alınırsa dokudaki zararsız
-   bakterilerden biri dirençlenir ve geçilmez bir engele dönüşür
-   ("direnç geliştiren kişi değil, bakteridir").
+   BAĞIŞIKLIK HÜCRESİ: virüslü bölümde çıkar. Alınınca virüsler bir süre çoğalamaz.
+   Virüse karşı antibiyotik değil, vücudun kendi savunması çalışır.
    ========================================================================= */
-const nearObstacle = (x, y) => { for (let d = 0; d < 4; d++) { const X = x + DX[d], Y = y + DY[d]; if (X >= 0 && Y >= 0 && X < COLS && Y < ROWS && obstacle[Y * COLS + X]) return true; } return false; };
-function floraCell() {
-  // kenara ve engellere bitişik olmayan hücre: dirençlenince bir geçidi tamamen kapatmasın
-  const cand = [];
-  for (let y = 1; y < ROWS - 1; y++) for (let x = 1; x < COLS - 1; x++)
-    if (!occupied(x, y) && !floraAt(x, y) && !nearObstacle(x, y) && Math.abs(x - bx[0]) + Math.abs(y - by[0]) >= 5 && !movers.some(m => m.y === y)) cand.push(x, y);
-  if (!cand.length) return null;
-  const k = ((Math.random() * cand.length / 2) | 0) * 2;
-  return [cand[k], cand[k + 1]];
-}
-function addFlora() {
-  const c = floraCell(); if (!c) return null;
-  const s = new PIXI.Sprite(T.flora); s.anchor.set(.5); floraLayer.addChild(s);
-  const f = { x: c[0], y: c[1], s, ph: Math.random() * 6.28 }; flora.push(f); return f;
-}
-function maybeAntibiotic() {
+const IMMUNE_MS = 8000;
+function maybeImmune() {
   // sinüste virüs varken çıkar: serbest, mukusa yapışmış ya da akışın taşıdığı
   const virusNow = viruses.length || carriedAt.length || items.some(it => it.infected);
-  if (!cfg.antibiotic || exitOpen || !virusNow || countType('antibiotic') || Math.random() >= cfg.antibiotic) return;
-  if (spawn('antibiotic') && !lv.abSeen++) callout('Antibiyotik kapsülü', 'Virüse etki etmez, dokunma');
+  if (!cfg.immune || exitOpen || !virusNow || countType('immune') || gameTime < immuneUntil || Math.random() >= cfg.immune) return;
+  if (spawn('immune') && !lv.immuneSeen++) callout('Bağışıklık hücresi geldi', 'Topla, virüsler bir süre çoğalamasın');
 }
-function makeResistant() {
-  const ok = flora.filter(f => !occupied(f.x, f.y) && Math.abs(f.x - bx[0]) + Math.abs(f.y - by[0]) >= 4);
-  let x, y;
-  if (ok.length) {
-    const f = ok[(Math.random() * ok.length) | 0]; x = f.x; y = f.y;
-    f.s.destroy(); flora.splice(flora.indexOf(f), 1);
-  } else { const c = floraCell(); if (!c) return; [x, y] = c; }
-  obstacle[y * COLS + x] = 4; placeObstacleSprites();
-  burst((x + .5) * cell, (y + .5) * cell, 18, 0x2F6B52); sfx('resist');
-}
-function takeAntibiotic(it) {
+function takeImmune(it) {
   const cx = (it.x + .5) * cell, cy = (it.y + .5) * cell;
-  removeItem(it); lv.ab++;
-  for (const v of viruses) burst((v.x + .5) * cell, (v.y + .5) * cell, 6, 0xFFFFFF);   // virüslere bir şey olmaz
-  burst(cx, cy, 12, 0xFF8A95); popup('Etkisiz', cx, cy, 0xFF8A95); sfx('antibiotic');
-  if (navigator.vibrate) try { navigator.vibrate(20); } catch {}
-  makeResistant();
-  callout('Antibiyotik virüse etki etmez', 'Dokudaki bir bakteri direnç kazandı');
+  removeItem(it); lv.immunes++; immuneUntil = gameTime + IMMUNE_MS;
+  for (const v of viruses) burst((v.x + .5) * cell, (v.y + .5) * cell, 8, 0xB49AEE);   // savunma virüslere ulaşır
+  burst(cx, cy, 16, 0xB49AEE); sfx('immune');
+  callout('Bağışıklık devrede', 'Virüsler bir süre çoğalamaz');
+  prog.immunes++; if (prog.immunes >= 10) award('immune10');
 }
 
 /* =========================================================================
@@ -425,7 +567,7 @@ function step() {
     return die('wall');
   }
   const ob = obstacle[ny * COLS + nx];
-  if (ob) return die(ob === 2 ? 'crust' : ob === 4 ? 'resist' : ob === 5 ? 'wall' : ob >= 6 ? 'swell' : 'polyp');
+  if (ob) return die(ob === 2 ? 'crust' : ob === 5 ? 'wall' : ob >= 6 ? 'swell' : 'polyp');
   if (moverAt(nx, ny)) return die('plug');
   const willGrow = grow > 0;
   for (let i = 1; i < (willGrow ? len : len - 1); i++) if (bx[i] === nx && by[i] === ny) return die('self');
@@ -492,14 +634,14 @@ function consume(it) {
     }
     score += pts; if (mode !== 'demo') popup('+' + pts, cx, cy, 0xFFFFFF);
     removeItem(it);
-    if (cfg.shape) recedeSwelling();
+    if (cfg.swell) recedeSwelling();
     if (eaten >= target) { if (!exitOpen) openExit(); }
     else if (eaten + countType('mucus') < target) spawn('mucus');
     if (!exitOpen) {
       if (!countType('gold') && Math.random() < cfg.gold) spawn('gold');
       if (!countType('serum') && Math.random() < cfg.serum) spawn('serum');
       if (!countType('breeze') && Math.random() < cfg.breeze) spawn('breeze');
-      maybeAntibiotic();
+      maybeImmune();
     }
     if (mode === 'endless' && eaten % 5 === 0) callout('Akış hızlandı', 'Hız ' + (1 + eaten / 5));
   } else if (it.type === 'gold') {
@@ -513,7 +655,7 @@ function consume(it) {
   } else if (it.type === 'breeze') {
     breezeUntil = gameTime + 6000; burst(cx, cy, 16, 0x2FAE6E); sfx('breeze'); removeItem(it);
     callout('Ferah esinti', 'Yakındaki mukuslar sana geliyor');
-  } else if (it.type === 'antibiotic') takeAntibiotic(it);
+  } else if (it.type === 'immune') takeImmune(it);
   if (mode === 'endless' && score >= 1000) award('endless');
   hudScore(); hudBar();
 }
@@ -543,7 +685,7 @@ function addVirus(x, y) {
 function spawnVirus() {
   const cand = [];
   for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++)
-    if (emptyCell(x, y) && Math.abs(x - bx[0]) + Math.abs(y - by[0]) >= 7 && !movers.some(m => m.y === y)) cand.push(x, y);
+    if (emptyCell(x, y) && !rimCell[y * COLS + x] && Math.abs(x - bx[0]) + Math.abs(y - by[0]) >= 7 && !movers.some(m => m.y === y)) cand.push(x, y);
   if (!cand.length) return null;
   const k = ((Math.random() * cand.length / 2) | 0) * 2;
   return addVirus(cand[k], cand[k + 1]);
@@ -597,7 +739,7 @@ function expelTail() {
 function updateViruses(dt) {
   if (!cfg.virus) return;
   if (cfg.replicate) for (const v of viruses.slice()) {
-    if (cleaned[v.y * COLS + v.x]) { v.rep += dt; continue; }   // temiz dokuda çoğalamaz
+    if (cleaned[v.y * COLS + v.x] || gameTime < immuneUntil) { v.rep += dt; continue; }   // temiz dokuda ve bağışıklık devredeyken çoğalamaz
     if (gameTime < v.rep) continue;
     v.rep = gameTime + cfg.replicate;
     if (viruses.length >= cfg.virusMax) continue;
@@ -608,7 +750,7 @@ function updateViruses(dt) {
     n.px = v.x; n.py = v.y; lv.replicated++;
     burst((n.x + .5) * cell, (n.y + .5) * cell, 10, 0xF2683A); sfx('replicate');
     if (lv.replicated === 1) callout('Virüs çoğaldı', 'Temizlenmiş dokuda çoğalamazlar');
-    maybeAntibiotic();
+    maybeImmune();
   }
   if (cfg.respawn && !viruses.length) {
     if (!virusWait) virusWait = gameTime + cfg.respawn;
@@ -620,7 +762,9 @@ function renderViruses(a, dt, now) {
     v.pop = Math.min(1, v.pop + dt / 280);
     const popS = v.pop < 1 ? 1 - Math.pow(1 - v.pop, 3) + Math.sin(v.pop * Math.PI) * .25 : 1;
     const left = v.rep - gameTime;     // çoğalmadan hemen önce şişip titrer
-    const swell = cfg.replicate && left < 1500 && !cleaned[v.y * COLS + v.x] ? (1 - Math.max(0, left) / 1500) * .22 * (.6 + .4 * Math.sin(now * .03)) : 0;
+    const guarded = gameTime < immuneUntil;   // bağışıklık etkisi: virüsler soluk, çoğalma titremesi yok
+    v.s.tint = guarded ? 0xD8E6FF : 0xFFFFFF; v.s.alpha = guarded ? .75 : 1;
+    const swell = cfg.replicate && !guarded && left < 1500 && !cleaned[v.y * COLS + v.x] ? (1 - Math.max(0, left) / 1500) * .22 * (.6 + .4 * Math.sin(now * .03)) : 0;
     v.s.position.set((v.px + (v.x - v.px) * a + .5) * cell, (v.py + (v.y - v.py) * a + .5) * cell);
     v.s.width = v.s.height = cell * 1.05 * popS * (1 + .05 * Math.sin(now * .006 + v.ph) + swell);
     v.s.rotation = Math.sin(now * .002 + v.ph) * .5;
@@ -632,7 +776,7 @@ function cleanCell(x, y, instant) {
   const i = y * COLS + x; if (cleaned[i]) return;
   cleaned[i] = 1; cleanedCount++;
   const s = cleanSprites[i]; s.visible = true;
-  if (instant) { s.width = s.height = cell * .94; s.alpha = 1; } else { s.alpha = 0; cleanAnims.push({ s, t: 0 }); freshCell[i] = 1; }
+  if (instant) { s.width = s.height = cell * CLEAN; s.alpha = 1; } else { s.alpha = 0; cleanAnims.push({ s, t: 0 }); freshCell[i] = 1; }
 }
 
 /* Demo botu: hedefe yönel, sıkışacağı yönlerden flood-fill ile kaçın */
@@ -665,13 +809,13 @@ function distField(sx, sy) {
 }
 function botDir() {
   const hx = bx[0], hy = by[0];
-  // hedef: çıkış açıksa çıkış, değilse yol mesafesiyle en yakın mukus ya da altın; kapsülden, virüsten ve tıkaçtan kaçın.
+  // hedef: çıkış açıksa çıkış, değilse yol mesafesiyle en yakın mukus, altın ya da bağışıklık hücresi; virüsten ve tıkaçtan kaçın.
   // Mesafe duvarların etrafından ölçülür (şekilli sinüslerde düz mesafe yanıltır).
   let tx, ty, md = 1e9;
   if (exitOpen) { tx = Math.min(COLS - 1, Math.max(0, exitX)); ty = Math.min(ROWS - 1, Math.max(0, exitY)); }
   else {
     const fromHead = distField(hx, hy);
-    for (const it of items) if (it.type === 'mucus' || it.type === 'gold' || (botBait && it.type === 'antibiotic')) {
+    for (const it of items) if (it.type === 'mucus' || it.type === 'gold' || it.type === 'immune') {
       const k = fromHead[it.y * COLS + it.x]; if (k >= 0 && k < md) { md = k; tx = it.x; ty = it.y; }
     }
   }
@@ -685,7 +829,6 @@ function botDir() {
     const space = flood(nx, ny, 120), it = itemAt(nx, ny);
     const td = toTarget ? toTarget[ny * COLS + nx] : 0;
     let s = (toTarget ? (td >= 0 ? -td : -200) : 0) + (space < len + 6 ? -500 + space : 0) + (d === moveDir ? .3 : 0);
-    if (it && it.type === 'antibiotic') s += botBait ? 50 : -200;
     if (gameTime >= hurtUntil && virusAt(nx, ny)) s -= 100;
     if (moverAt(nx - 1, ny) || moverAt(nx + 1, ny)) s -= 60;
     if (s > bestS) { bestS = s; best = d; }
@@ -718,7 +861,7 @@ function die(reason) {
 }
 
 function evalGoal([t, v], st) {
-  return { clean: st.clean >= v, time: st.time <= v, sneeze: st.sneezes >= v, gold: st.golds >= v, len: st.maxLen >= v, nohard: st.hardened === 0, virus: st.expelled >= v, noinfect: st.replicated === 0, noab: st.ab === 0 }[t];
+  return { clean: st.clean >= v, time: st.time <= v, sneeze: st.sneezes >= v, gold: st.golds >= v, len: st.maxLen >= v, nohard: st.hardened === 0, virus: st.expelled >= v, noinfect: st.replicated === 0, immune: st.immunes >= v }[t];
 }
 function finishLevel() {
   state = 'result';
@@ -727,12 +870,10 @@ function finishLevel() {
   const got = [true, evalGoal(L.obj[0], st), evalGoal(L.obj[1], st)];
   const mask = got.reduce((m, g, i) => m | (g ? 1 << i : 0), 0);
   prog.mask[levelIdx] |= mask; prog.done[levelIdx] = true; prog.best = Math.max(prog.best, score);
-  if (L.antibiotic && !lv.ab) prog.noab[levelIdx] = true;
   const newFact = !prog.facts[levelIdx]; prog.facts[levelIdx] = true;
   save();
   if (st.clean >= 60) award('clean60');
   if (mask === 7) award('perfect');
-  if (LEVELS.every((l, i) => !l.antibiotic || prog.noab[i])) award('noab');
   if (prog.done.every(Boolean)) award('all');
   if (totalStars() >= 10) award('stars10');
   if (totalStars() >= LEVELS.length * 3) award('starsAll');
@@ -960,8 +1101,8 @@ function updateFx(dt, now) {
   for (let i = cleanAnims.length - 1; i >= 0; i--) {
     const a = cleanAnims[i]; a.t += dt; const k = Math.max(0, Math.min(1, a.t / 320));   // t < 0: dalgada sırasını bekliyor
     const sc = k < .6 ? .5 + k / .6 * .62 : 1.12 - (k - .6) / .4 * .18;
-    a.s.width = a.s.height = cell * .94 * sc; a.s.alpha = Math.min(1, k * 2.2);
-    if (k >= 1) { a.s.width = a.s.height = cell * .94; a.s.alpha = 1; cleanAnims.splice(i, 1); }
+    a.s.width = a.s.height = cell * CLEAN * sc; a.s.alpha = Math.min(1, k * 2.2);
+    if (k >= 1) { a.s.width = a.s.height = cell * CLEAN; a.s.alpha = 1; cleanAnims.splice(i, 1); }
   }
   const ek = 1 - Math.exp(-dt * .02);
   for (const it of items) {
@@ -982,10 +1123,6 @@ function updateFx(dt, now) {
       it.s.alpha = left < 1600 ? (Math.sin(now * .03) > 0 ? 1 : .3) : 1;
     }
   }
-  for (const f of flora) {
-    f.s.position.set((f.x + .5) * cell, (f.y + .5) * cell + Math.sin(now * .003 + f.ph) * cell * .04);
-    f.s.width = f.s.height = cell * 1.1; f.s.rotation = Math.sin(now * .0015 + f.ph) * .3; f.s.alpha = .9;
-  }
   if (gateLayer.visible) {
     const p = .5 + .5 * Math.sin(now * .006);
     gateGlow.alpha = exitOpen ? .5 + .5 * p : .12 + .08 * p; gateRing.alpha = exitOpen ? 1 : .4; gateRing.rotation = exitOpen ? -now * .005 : -now * .0008;
@@ -993,6 +1130,10 @@ function updateFx(dt, now) {
   // iltihap kızarıklığı tıkanıklıkla birlikte solar, bölüm sonunda tamamen kaybolur
   const inflam = mode === 'adventure' && state !== 'result' ? .3 * (1 - .6 * Math.min(1, eaten / target)) : 0;
   inflamG.alpha += (inflam - inflamG.alpha) * (state === 'result' ? 1 - Math.exp(-dt * .004) : ek);
+  if (cfg.shape) {   // şekilli bölümde kızarıklık ekranın tamamına değil yalnız sinüsün zeminine
+    const k = Math.min(1, inflamG.alpha / .3), g = Math.round(255 - 95 * k), b = Math.round(255 - 85 * k);
+    floorS.tint = (255 << 16) | (g << 8) | b;
+  }
   for (const p of PARTS) {
     if (p.life <= 0) continue;
     p.life -= dt; if (p.life <= 0) { p.s.visible = false; continue; }
@@ -1056,6 +1197,7 @@ app.ticker.add((tk) => {
   for (const m of movers) { const a = running() ? alpha : 1; m.s.position.set((m.px + (m.x - m.px) * a + .5) * cell, (m.py + (m.y - m.py) * a + .5) * cell + Math.sin(now * .008 + m.ph) * cell * .04); m.s.width = m.s.height = cell * 1.1; m.s.scale.x = Math.abs(m.s.scale.x) * (m.dx < 0 ? -1 : 1); }
   renderViruses(running() ? alpha : 1, dt, now);
   updateFx(dt, now);
+  updateInside(dt, now);
   if ((chipAcc += dt) > 100) { chipAcc = 0; updateChips(); }
   if (fpsOn) {
     fpsAcc += tk.deltaMS; fpsFrames++; fpsWorst = Math.max(fpsWorst, tk.deltaMS);
@@ -1115,16 +1257,14 @@ function hudBar() {
   fill.classList.remove('open'); fill.style.transform = `scaleX(${r})`; lab.textContent = `Tıkanıklık %${Math.round(r * 100)}`;
 }
 function updateChips() {
-  const set = (id, until) => {
+  const set = (id, until, dur = 6000) => {
     const el = $(id), left = until - gameTime, on = left > 0 && mode !== 'demo';
-    el.classList.toggle('on', on); if (on) el.querySelector('b').style.transform = `scaleX(${left / 6000})`;
+    el.classList.toggle('on', on); if (on) el.querySelector('b').style.transform = `scaleX(${left / dur})`;
   };
-  set('chipSerum', slowUntil); set('chipBreeze', breezeUntil);
+  set('chipSerum', slowUntil); set('chipBreeze', breezeUntil); set('chipImmune', immuneUntil, IMMUNE_MS);
   const vOn = !!cfg.virus && mode !== 'demo';
   $('chipVirus').classList.toggle('on', vOn); $('chipCarry').classList.toggle('on', vOn && carriedAt.length > 0);
   if (vOn) { $('chipVirusN').textContent = viruses.length; $('chipCarryN').textContent = carriedAt.length; }
-  const rOn = !!cfg.antibiotic && mode !== 'demo' && lv && lv.ab > 0;
-  $('chipResist').classList.toggle('on', rOn); if (rOn) $('chipResistN').textContent = lv.ab;
 }
 function setMute() { $('muteWave').style.display = prog.muted ? 'none' : ''; $('btnMute').setAttribute('aria-label', prog.muted ? 'Sesi aç' : 'Sesi kapat'); }
 function hideHint() { if ($('hint').classList.contains('on')) { $('hint').classList.remove('on'); prog.seenTut = true; save(); } }
@@ -1162,9 +1302,9 @@ function legendKeys(c) {
   if (c.obs.some(r => !((r.w === 1 || r.h === 1) && r.w * r.h > 2))) k.push('polyp');
   if (c.obs.some(r => (r.w === 1 || r.h === 1) && r.w * r.h > 2)) k.push('septum');
   if (c.virus) k.push('virus', 'infected');
-  if (c.antibiotic) k.push('antibiotic', 'flora', 'resist');
+  if (c.immune) k.push('immune');
   if (c.movers) k.push('plug'); if (c.harden) k.push('crust');
-  if (c.shape) k.push('swell');
+  if (c.swell) k.push('swell');
   return k;
 }
 // bölümde yalnızca yeni olanı göster: önceki bölümlerde anlatılanlar tekrarlanmaz
@@ -1280,17 +1420,17 @@ addEventListener('blur', () => togglePause(true));
 if (DEBUG) window.__ns = {
   step, botDir, addVirus, prog,
   get st() { return { state, mode, len, eaten, target, exitOpen, score, levelIdx, reason: deathReason }; },
-  items: () => items.map(i => [i.type, i.x, i.y]), viruses: () => viruses.map(v => [v.x, v.y]), flora: () => flora.map(f => [f.x, f.y]),
+  items: () => items.map(i => [i.type, i.x, i.y]), viruses: () => viruses.map(v => [v.x, v.y]),
   head: () => [bx[0], by[0]], body: () => Array.from({ length: len }, (_, i) => [bx[i], by[i]]), obs: (x, y) => obstacle[y * COLS + x],
   mover: (x, y) => !!moverAt(x, y), exit: () => exits, setDir: d => { dir = d; queue.length = 0; }, dir: () => dir,
   carried: () => carriedAt.length, lv: () => lv, spawn, callout, die,
-  // bölümü bot oynar; bait: bot kapsüle yönelir (direnç akışını sınamak için)
-  play(i, bait = false) { botBait = bait; if (i === 'endless') openEndless(); else openIntro(i); begin(); autoBot = true; },
+  // bölümü bot oynar
+  play(i) { if (i === 'endless') openEndless(); else openIntro(i); begin(); autoBot = true; },
   run(maxMs = 300000) {
     const t0 = gameTime;
     while ((state === 'play' || state === 'exiting') && gameTime - t0 < maxMs) simTick(16);
     autoBot = false;
-    return { state, reason: deathReason, time: Math.round((gameTime - t0) / 1000), eaten, target, len, score, ab: lv.ab, hits: lv.hits, expelled: lv.expelled, hardened: lv.hardened, replicated: lv.replicated };
+    return { state, reason: deathReason, time: Math.round((gameTime - t0) / 1000), eaten, target, len, score, immunes: lv.immunes, hits: lv.hits, expelled: lv.expelled, hardened: lv.hardened, replicated: lv.replicated };
   },
 };
 

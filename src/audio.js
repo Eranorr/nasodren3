@@ -33,8 +33,7 @@ export function playSfx(name) {
     case 'trap':   tone('sine', 620, 240, 0.18, 0.1); tone('triangle', 900, 900, 0.06, 0.05, 0.08); break;
     case 'hurt':   tone('square', 320, 110, 0.22, 0.06); break;
     case 'replicate': tone('triangle', 180, 360, 0.2, 0.06); tone('triangle', 240, 480, 0.2, 0.05, 0.08); break;
-    case 'antibiotic': tone('square', 520, 260, 0.12, 0.05); tone('triangle', 300, 140, 0.3, 0.09, 0.08); break;
-    case 'resist': tone('square', 140, 90, 0.3, 0.07); tone('sine', 1400, 1300, 0.08, 0.04, 0.02); break;
+    case 'immune': [392, 523, 659, 784].forEach((f, i) => tone('triangle', f, f * 1.02, 0.12, 0.07, i * 0.06)); break;   // savunma devrede
     case 'die':    tone('sawtooth', 240, 50, 0.45, 0.1); break;
     case 'sneeze': {
       const t = actx.currentTime, s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
