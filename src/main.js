@@ -1,8 +1,9 @@
 import * as PIXI from 'pixi.js';
-import { COLS, ROWS, ACTS, LEVELS, ENDLESS, DEMO, FACTS, CLOSING, TIPS, SKINS, BADGES, ITEM_INFO, GOAL_TEXT, REASONS } from './content.js';
-import { prog, save, totalStars, unlocked } from './save.js';
-import { initAudio, playSfx } from './audio.js';
-import { TS, cnv, seeded, C } from './textures.js';
+import { COLS, ROWS, ACTS, LEVELS, DEMO, FACTS, INFO, HOWTO, CLOSING, TIPS, SKINS, BADGES, ITEM_INFO, GOAL_TEXT, REASONS } from './content.js';
+import { prog, save, totalStars, addScore, cleanName } from './save.js';
+import { initAudio, playSfx, setVolumes, musicScene, musicDuck, audioHidden } from './audio.js';
+import { createMusic } from './music.js';
+import { TS, cnv, seeded, C, HALO, halo } from './textures.js';
 
 // Mobilde konsol: adrese ?eruda ekle (yalnızca geliştirme modunda)
 if (import.meta.env.DEV && /eruda/.test(location.search + location.hash)) import('eruda').then(m => m.default.init());
@@ -16,6 +17,7 @@ const COMBO_WINDOW = 2600;
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const DEBUG = /debug/.test(location.hash) || /debug/.test(location.search);
 const sfx = name => { if (!prog.muted && mode !== 'demo') playSfx(name); };
+const buzz = ms => { if (prog.vibrate && navigator.vibrate) try { navigator.vibrate(ms); } catch {} };
 
 // DOM ikonları aynı dokulardan
 const ICON = { mucus: C.mucus[0], gold: C.gold, serum: C.serum, breeze: C.breeze, polyp: C.polyp[0], septum: C.septum, plug: C.plug, crust: C.crust,
@@ -40,9 +42,13 @@ stageEl.prepend(app.canvas);
 app.ticker.maxFPS = 0;
 
 const T = {};
-for (const k of ['ball', 'face', 'soft', 'dot', 'gold', 'serum', 'breeze', 'septum', 'crust', 'plug', 'portal', 'fresh', 'petal', 'virus', 'petals', 'eye', 'face2', 'leaf', 'tuber', 'bubble', 'bloom', 'immune', 'swell']) T[k] = PIXI.Texture.from(C[k]);
-T.mucus = C.mucus.map(c => PIXI.Texture.from(c));
-T.infected = C.infected.map(c => PIXI.Texture.from(c));
+for (const k of ['ball', 'face', 'soft', 'dot', 'septum', 'crust', 'plug', 'portal', 'petal', 'petals', 'eye', 'face2', 'leaf', 'tuber', 'bubble', 'bloom', 'swell']) T[k] = PIXI.Texture.from(C[k]);
+// tahtadaki öğeler haleli: toplanabilirler açık bir ışıkla, virüs koyu bir gölgeyle zeminden ayrılır
+const HALO_RGB = { mucus: '255,250,214', infected: '236,220,255', gold: '255,236,160', serum: '226,244,255', breeze: '222,250,232', immune: '240,234,255' };
+for (const k of ['gold', 'serum', 'breeze', 'immune']) T[k] = PIXI.Texture.from(halo(C[k], HALO_RGB[k], .85));
+T.virus = PIXI.Texture.from(halo(C.virus, '60,8,30', .4)); T.virusBare = PIXI.Texture.from(C.virus);   // virusBare: akışın taşıdığı virüs
+T.mucus = C.mucus.map(c => PIXI.Texture.from(halo(c, HALO_RGB.mucus, .85)));
+T.infected = C.infected.map(c => PIXI.Texture.from(halo(c, HALO_RGB.infected, .85)));
 T.polyp = C.polyp.map(c => PIXI.Texture.from(c));
 
 const petalLayer = new PIXI.Container();
@@ -51,14 +57,14 @@ const board = new PIXI.Container();
 const bleedS = new PIXI.Sprite(), lightS = new PIXI.Sprite(), lightOpenS = new PIXI.Sprite();
 lightS.anchor.set(.5); lightOpenS.anchor.set(.5);
 app.stage.addChild(bleedS, petalLayer, board);
-const shadowG = new PIXI.Graphics(), baseG = new PIXI.Graphics(), inflamG = new PIXI.Graphics(), rimG = new PIXI.Graphics();   // inflamG: iltihap kızarıklığı, temizlendikçe solar
-const cleanLayer = new PIXI.Container(), bloomLayer = new PIXI.Container(), gateLayer = new PIXI.Container();
+const shadowG = new PIXI.Graphics(), baseG = new PIXI.Graphics(), inflamG = new PIXI.Graphics(), rimG = new PIXI.Graphics();   // inflamG: iltihap kızarıklığı, bölüm bitince solar
+const bloomLayer = new PIXI.Container(), gateLayer = new PIXI.Container();
 const obsLayer = new PIXI.Container(), itemLayer = new PIXI.Container(), moverLayer = new PIXI.Container(), virusLayer = new PIXI.Container();
 const snakeLayer = new PIXI.Container(), maskG = new PIXI.Graphics(), fxLayer = new PIXI.Container(), popLayer = new PIXI.Container(), flashG = new PIXI.Graphics();
 const floorLayer = new PIXI.Container(), floorMaskG = new PIXI.Graphics();   // zemin yuvarlak köşelere kırpılır
 const floorS = new PIXI.Sprite();   // şekilli bölümde pürüzsüz hatlı sinüs zemini (drawSinusFloor)
 const driftLayer = new PIXI.Container();   // ostiuma süzülen parçacıklar
-floorLayer.addChild(baseG, floorS, inflamG, cleanLayer, bloomLayer, driftLayer); floorLayer.mask = floorMaskG;
+floorLayer.addChild(baseG, floorS, inflamG, bloomLayer, driftLayer); floorLayer.mask = floorMaskG;
 board.addChild(shadowG, floorLayer, floorMaskG, rimG, lightS, lightOpenS, gateLayer, obsLayer, itemLayer, moverLayer, virusLayer, snakeLayer, maskG, fxLayer, popLayer, flashG);
 snakeLayer.mask = maskG; flashG.alpha = 0; inflamG.alpha = 0;
 const gateMaskG = new PIXI.Graphics(); board.addChild(gateMaskG); gateLayer.mask = gateMaskG;   // ostium ışıması çerçevenin dışına taşmasın
@@ -70,8 +76,6 @@ for (let i = 0; i < 12; i++) {
   PETALS.push({ s, x: Math.random(), y: Math.random(), v: .00002 + Math.random() * .00003, r: Math.random() * 6, vr: (Math.random() - .5) * .001, sz: 18 + Math.random() * 26, ph: Math.random() * 6 });
 }
 
-const cleanSprites = [];
-for (let i = 0; i < COLS * ROWS; i++) { const s = new PIXI.Sprite(T.fresh); s.anchor.set(.5); s.visible = false; cleanLayer.addChild(s); cleanSprites.push(s); }
 
 const gateGlow = new PIXI.Sprite(T.soft), gateRing = new PIXI.Sprite(T.portal);
 gateGlow.anchor.set(.5); gateRing.anchor.set(.5); gateGlow.tint = 0x2FD6BE; gateRing.tint = 0x0E9C88;
@@ -104,9 +108,9 @@ const obsPool = [];
    DURUM
    ========================================================================= */
 let cell = 20, boardW = 0, boardH = 0, baseX = 0, baseY = 0, calloutBand = 0;   // calloutBand: tahtanın üstünde mesajlara ayrılan şerit
-let mode = 'demo';               // demo | adventure | endless
+let mode = 'demo';               // demo | adventure
 let state = 'demo';              // demo | intro | play | exiting | dying | result | over | paused
-let pausedFrom = null, cfg = DEMO, levelIdx = 0, score = 0;
+let pausedFrom = null, cfg = DEMO, levelIdx = 0, score = 0, cleared = false;   // score: koşu boyunca (1. bölümden ölene ya da bitirene kadar) birikir
 const bx = new Int16Array(MAXSEG), by = new Int16Array(MAXSEG), px = new Int16Array(MAXSEG), py = new Int16Array(MAXSEG);
 const ix = new Float32Array(MAXSEG), iy = new Float32Array(MAXSEG);
 let len = 0, prevLen = 0, grow = 0, dir = 0, moveDir = 0, queue = [];
@@ -114,8 +118,8 @@ let acc = 0, gameTime = 0, levelStart = 0;
 let eaten = 0, target = 0, exitOpen = false, exitX = 0, exitY = 0, exitDir = 0, exitSteps = 0, exits = [];   // exits: tahta dışındaki çıkış hücreleri; exitX/Y ilki
 let combo = 0, lastEat = -1e9, boostUntil = 0, slowUntil = 0, breezeUntil = 0, immuneUntil = 0;
 let shake = 0, stepCount = 0, autoBot = false, deathReason = '';   // autoBot: denge testi için botun bölüm oynaması (yalnızca #debug)
-const obstacle = new Uint8Array(COLS * ROWS), swellAt = new Uint8Array(COLS * ROWS), cleaned = new Uint8Array(COLS * ROWS), scratch = new Uint8Array(COLS * ROWS);
-let cleanedCount = 0, freeCells = 1, swellStage = 0;   // swellAt: şişlik hücresinin çekileceği aşama (1 iç, 2 dış katman)
+const obstacle = new Uint8Array(COLS * ROWS), swellAt = new Uint8Array(COLS * ROWS), visited = new Uint8Array(COLS * ROWS), scratch = new Uint8Array(COLS * ROWS);
+let swellStage = 0;   // swellAt: şişlik hücresinin çekileceği aşama (1 iç, 2 dış katman)
 
 // Tahtanın yuvarlak köşeleri: yarıçap hücre biriminde. Yayın dışında kalan köşe hücreleri duvardır (her köşede 8 hücre,
 // tamamen çerçevenin altında kalır). Yayın üstüne denk gelen hücrelerde oynanır ama nesne, virüs ve çıkış çıkmaz.
@@ -127,16 +131,14 @@ for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
   const d = Math.hypot(ex, ey);
   if (d > CORNER + .2) cornerWall[y * COLS + x] = 1; else if (d > CORNER - .3) rimCell[y * COLS + x] = 1;
 }
-const cleanAnims = [];
-const CLEAN = 1.42;   // temiz doku lekesinin çapı (hücre): komşu lekeler kesintisiz bir iz oluşturur, 2x2 temiz alan tamamen dolar
 let items = [], movers = [], viruses = [];
-let carriedAt = [], hurtUntil = 0, virusWait = 0;   // carriedAt: virüslü mukusun yutulduğu adım (gövdede ilerler)
+let carriedAt = [], hurtUntil = 0;   // carriedAt: virüslü mukusun yutulduğu adım (gövdede ilerler)
 let lv = null;                         // bölüm istatistikleri
 let gameSneezes = 0;
 
 function stepDur() {
   if (state === 'exiting') return 45;
-  let d = mode === 'endless' ? Math.max(68, cfg.step - eaten * 2.2) : cfg.step;
+  let d = cfg.step;
   if (gameTime < boostUntil) d *= .62;
   if (gameTime < slowUntil) d *= 1.4;
   return d;
@@ -163,9 +165,6 @@ function layout() {
     .roundRect(-pad * .5, -pad * .5, boardW + pad, boardH + pad, cr + pad * .5).stroke({ width: 2, color: 0xFFFFFF, alpha: .5 });
   drawBoard();
   flashG.clear().roundRect(-pad, -pad, boardW + pad * 2, boardH + pad * 2, cr + pad).fill(0xFF3355);
-  for (let i = 0; i < cleanSprites.length; i++) cleanSprites[i].position.set(((i % COLS) + .5) * cell, (((i / COLS) | 0) + .5) * cell);
-  for (const a of cleanAnims) a.done = false;
-  for (let i = 0; i < cleanSprites.length; i++) if (cleaned[i]) cleanSprites[i].width = cleanSprites[i].height = cell * CLEAN;
   placeObstacleSprites();
   for (const it of items) { placeItem(it, true); }
   for (const m of movers) m.s.width = m.s.height = cell * 1.1;
@@ -370,22 +369,20 @@ function setupBoard(c) {
     const s = new PIXI.Sprite(T.plug); s.anchor.set(.5); moverLayer.addChild(s);
     movers.push({ x, y, dx: d, px: x, py: y, s, ph: Math.random() * 6 });
   }
-  freeCells = 0; for (let i = 0; i < obstacle.length; i++) if (!obstacle[i] || obstacle[i] >= 6) freeCells++;
   placeObstacleSprites(); drawBoard();
 
-  cleaned.fill(0); cleanedCount = 0; cleanAnims.length = 0; freshCell.fill(0);
+  visited.fill(0); freshCell.fill(0);
   for (const b of BLOOMS) { b.life = 0; b.s.visible = false; }
-  for (const s of cleanSprites) { s.visible = false; }
   for (const it of items) it.s.destroy(); items = [];
-  for (const v of viruses) v.s.destroy(); viruses = []; carriedAt = []; hurtUntil = 0; virusWait = 0;
+  for (const v of viruses) v.s.destroy(); viruses = []; carriedAt = []; hurtUntil = 0;
   len = 4; grow = 0; dir = moveDir = 0; queue.length = 0; stepCount = 0;
   const [sx, sy] = c.start || [COLS >> 1, ROWS - 4];
   for (let i = 0; i < len; i++) { bx[i] = sx; by[i] = sy + i; px[i] = bx[i]; py[i] = by[i]; }
   prevLen = len;
-  for (let i = 0; i < len; i++) cleanCell(bx[i], by[i], true);
+  for (let i = 0; i < len; i++) visit(bx[i], by[i], true);
   target = c.target; eaten = 0; exitOpen = false; gateLayer.visible = !!c.shape; placeGate();   // şekilli bölümde ostium baştan görünür, kapalı
   combo = 0; lastEat = -1e9; boostUntil = slowUntil = breezeUntil = immuneUntil = 0; acc = 0;
-  levelStart = gameTime;
+  levelStart = gameTime; cleared = false;
   lv = { sneezes: 0, golds: 0, hardened: 0, maxLen: len, trapped: 0, carried: 0, expelled: 0, replicated: 0, hits: 0, immunes: 0, immuneSeen: 0 };
   spawn('mucus'); spawn('mucus');
   for (let i = 0; i < (c.virus || 0); i++) spawnVirus();
@@ -483,7 +480,7 @@ function spawn(type) {
 function placeItem(it, snap) {
   it.tx = (it.x + .5) * cell; it.ty = (it.y + .5) * cell;
   if (snap) { it.cx = it.tx; it.cy = it.ty; it.s.position.set(it.tx, it.ty); }
-  it.base = cell * (it.type === 'mucus' ? 1.22 : 1.18);
+  it.base = cell * HALO * (it.type === 'mucus' ? 1.5 : 1.45);   // doku haleli: öğenin kendisi hücreden biraz büyük görünür
 }
 function removeItem(it) { it.s.destroy(); const i = items.indexOf(it); if (i >= 0) items.splice(i, 1); }
 const countType = t => items.reduce((n, it) => n + (it.type === t), 0);
@@ -559,7 +556,7 @@ function step() {
       popup('+' + bonus, (bx[0] + .5) * cell, (by[0] + .5) * cell, 0x7CF2DD);
       if (lv.carried) {
         lv.expelled = lv.carried; prog.viruses += lv.carried; if (prog.viruses >= 20) award('virus20');
-        callout(`${lv.carried} virüs dışarı atıldı`, 'Akış onları ostiumdan taşıdı');
+        callout(`${lv.carried} virüs dışarı atıldı`, 'Mukus yakaladı, akış ostiumdan taşıdı');
       }
       burst((nx + .5) * cell, (ny + .5) * cell, 26, 0x2FD6BE); petalBurst((bx[0] + .5) * cell, (by[0] + .5) * cell, 22);
       advance(dir, false); sfx('exit'); return;
@@ -576,11 +573,11 @@ function step() {
   if (!willGrow) vacated(px[prevLen - 1], py[prevLen - 1]);
   if (willGrow) grow--;
   if (len > lv.maxLen) lv.maxLen = len;
-  cleanCell(nx, ny);
+  visit(nx, ny);
   const it = itemAt(nx, ny); if (it) consume(it);
   if (hitV) virusHit(hitV);
   if (gameTime < breezeUntil) pullItems();
-  stepMovers(); stepViruses(); expelTail();
+  stepMovers(); stepViruses();
   if (mode !== 'demo' && len >= 40) award('len40');
   if (mode === 'demo' && len > 30) setupBoard(DEMO);
 }
@@ -614,14 +611,14 @@ function pullItems() {
 function consume(it) {
   const cx = (it.x + .5) * cell, cy = (it.y + .5) * cell;
   headPulse = 1;
-  const tier = mode === 'endless' ? 1 + Math.floor(eaten / 5) : 1 + levelIdx;
+  const tier = 1 + levelIdx;
   if (it.type === 'mucus') {
-    eaten++; grow += 2;
+    eaten += it.infected && mode === 'adventure' ? 2 : 1; grow += 2;   // virüslü mukus tıkanıklığı iki kat azaltır
     combo = (gameTime - lastEat < COMBO_WINDOW) ? combo + 1 : 1; lastEat = gameTime;
     let pts = 10 * tier + (combo > 1 ? combo * 5 : 0);
     if (it.infected) {
       lv.carried++; carriedAt.push(stepCount); pts += 20 * tier;
-      if (lv.carried === 1) callout('Virüs yakalandı!', mode === 'endless' ? 'Akış onu kuyruktan dışarı atacak' : 'Çıkışa taşı, bonus kazan');
+      if (lv.carried === 1) callout('Virüs yakalandı!', 'Sinüs rahatladı, çıkışa taşı');
     }
     burst(cx, cy, 7, 0xC3CF3E); foam(cx, cy, 8, .6); sfx('eat');
     if (mode !== 'demo') award('first');
@@ -630,7 +627,7 @@ function consume(it) {
       lv.sneezes++; gameSneezes++;
       if (mode !== 'demo') { callout('Hapşırma refleksi!', 'Akış bir anlığına hızlandı'); if (gameSneezes >= 5) award('sneeze5'); }
       sfx('sneeze'); burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 18, 0xF06AAE); petalBurst((bx[0] + .5) * cell, (by[0] + .5) * cell, 12);
-      if (mode !== 'demo' && navigator.vibrate) try { navigator.vibrate(25); } catch {}
+      if (mode !== 'demo') buzz(25);
     }
     score += pts; if (mode !== 'demo') popup('+' + pts, cx, cy, 0xFFFFFF);
     removeItem(it);
@@ -643,7 +640,6 @@ function consume(it) {
       if (!countType('breeze') && Math.random() < cfg.breeze) spawn('breeze');
       maybeImmune();
     }
-    if (mode === 'endless' && eaten % 5 === 0) callout('Akış hızlandı', 'Hız ' + (1 + eaten / 5));
   } else if (it.type === 'gold') {
     const pts = 50 * tier; score += pts; popup('+' + pts, cx, cy, 0xFFD24A);
     burst(cx, cy, 22, 0xF8C537); sfx('gold'); removeItem(it); lv.golds++;
@@ -656,7 +652,6 @@ function consume(it) {
     breezeUntil = gameTime + 6000; burst(cx, cy, 16, 0x2FAE6E); sfx('breeze'); removeItem(it);
     callout('Ferah esinti', 'Yakındaki mukuslar sana geliyor');
   } else if (it.type === 'immune') takeImmune(it);
-  if (mode === 'endless' && score >= 1000) award('endless');
   hudScore(); hudBar();
 }
 function harden(it) {
@@ -724,22 +719,14 @@ function virusHit(v) {
   if (lost > 0) { burst((bx[len - 1] + .5) * cell, (by[len - 1] + .5) * cell, 10, 0xF2683A); len -= lost; prevLen = Math.min(prevLen, len); }
   burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 18, 0xF2683A);
   flashG.alpha = .22; shake = REDUCED || mode === 'demo' ? 0 : 6; sfx('hurt');
-  if (mode !== 'demo' && navigator.vibrate) try { navigator.vibrate(30); } catch {}
+  if (mode !== 'demo') buzz(30);
   callout('Virüse çarptın', 'Akış kısaldı. Virüsü mukusa yakalat');
   removeVirus(v); spawnVirus();          // virüs sekip uzağa savrulur
-}
-// Serbest akışta çıkış yok: taşınan virüs kuyruğa ulaşınca dışarı atılır
-function expelTail() {
-  if (mode !== 'endless') return;
-  while (carriedAt.length && 1 + stepCount - carriedAt[0] >= len) {
-    carriedAt.shift(); lv.expelled++; prog.viruses++; if (prog.viruses >= 20) award('virus20');
-    burst((bx[len - 1] + .5) * cell, (by[len - 1] + .5) * cell, 10, 0x2FD6BE); foam((bx[len - 1] + .5) * cell, (by[len - 1] + .5) * cell, 5, .5);
-  }
 }
 function updateViruses(dt) {
   if (!cfg.virus) return;
   if (cfg.replicate) for (const v of viruses.slice()) {
-    if (cleaned[v.y * COLS + v.x] || gameTime < immuneUntil) { v.rep += dt; continue; }   // temiz dokuda ve bağışıklık devredeyken çoğalamaz
+    if (gameTime < immuneUntil) { v.rep += dt; continue; }   // bağışıklık devredeyken çoğalamaz
     if (gameTime < v.rep) continue;
     v.rep = gameTime + cfg.replicate;
     if (viruses.length >= cfg.virusMax) continue;
@@ -749,12 +736,8 @@ function updateViruses(dt) {
     const d = opts[(Math.random() * opts.length) | 0], n = addVirus(v.x + DX[d], v.y + DY[d]);
     n.px = v.x; n.py = v.y; lv.replicated++;
     burst((n.x + .5) * cell, (n.y + .5) * cell, 10, 0xF2683A); sfx('replicate');
-    if (lv.replicated === 1) callout('Virüs çoğaldı', 'Temizlenmiş dokuda çoğalamazlar');
+    if (lv.replicated === 1) callout('Virüs çoğaldı', 'Bağışıklık hücresi çoğalmayı durdurur');
     maybeImmune();
-  }
-  if (cfg.respawn && !viruses.length) {
-    if (!virusWait) virusWait = gameTime + cfg.respawn;
-    else if (gameTime >= virusWait) { virusWait = 0; spawnVirus(); }
   }
 }
 function renderViruses(a, dt, now) {
@@ -764,19 +747,18 @@ function renderViruses(a, dt, now) {
     const left = v.rep - gameTime;     // çoğalmadan hemen önce şişip titrer
     const guarded = gameTime < immuneUntil;   // bağışıklık etkisi: virüsler soluk, çoğalma titremesi yok
     v.s.tint = guarded ? 0xD8E6FF : 0xFFFFFF; v.s.alpha = guarded ? .75 : 1;
-    const swell = cfg.replicate && !guarded && left < 1500 && !cleaned[v.y * COLS + v.x] ? (1 - Math.max(0, left) / 1500) * .22 * (.6 + .4 * Math.sin(now * .03)) : 0;
+    const swell = cfg.replicate && !guarded && left < 1500 ? (1 - Math.max(0, left) / 1500) * .22 * (.6 + .4 * Math.sin(now * .03)) : 0;
     v.s.position.set((v.px + (v.x - v.px) * a + .5) * cell, (v.py + (v.y - v.py) * a + .5) * cell);
-    v.s.width = v.s.height = cell * 1.05 * popS * (1 + .05 * Math.sin(now * .006 + v.ph) + swell);
+    v.s.width = v.s.height = cell * HALO * 1.3 * popS * (1 + .05 * Math.sin(now * .006 + v.ph) + swell);
     v.s.rotation = Math.sin(now * .002 + v.ph) * .5;
   }
 }
 
-function cleanCell(x, y, instant) {
+// akış zeminde iz bırakmaz; yalnızca ilk geçtiği hücrede kuyruk ayrılınca kısa süre çiçek açar (vacated)
+function visit(x, y, instant) {
   if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return;
-  const i = y * COLS + x; if (cleaned[i]) return;
-  cleaned[i] = 1; cleanedCount++;
-  const s = cleanSprites[i]; s.visible = true;
-  if (instant) { s.width = s.height = cell * CLEAN; s.alpha = 1; } else { s.alpha = 0; cleanAnims.push({ s, t: 0 }); freshCell[i] = 1; }
+  const i = y * COLS + x; if (visited[i]) return;
+  visited[i] = 1; if (!instant) freshCell[i] = 1;
 }
 
 /* Demo botu: hedefe yönel, sıkışacağı yönlerden flood-fill ile kaçın */
@@ -844,35 +826,30 @@ function die(reason) {
   if (mode === 'demo') { state = 'dying'; burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 20, 0xF06AAE); setTimeout(() => { if (mode === 'demo') { setupBoard(DEMO); state = 'demo'; } }, 700); return; }
   state = 'dying'; flashG.alpha = .5; shake = REDUCED ? 0 : 14; sfx('die');
   burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 34, 0xFF4A6A);
-  if (navigator.vibrate) try { navigator.vibrate(70); } catch {}
-  let bestNow;
-  if (mode === 'endless') { prog.endlessBest = Math.max(prog.endlessBest, score); bestNow = prog.endlessBest; }
-  else { prog.best = Math.max(prog.best, score); bestNow = prog.best; }
-  save();
+  buzz(70);
+  prog.best = Math.max(prog.best, score); save();
   setTimeout(() => {
     state = 'over';
     $('overReason').textContent = REASONS[reason];
-    $('ovScore').textContent = score; $('ovBest').textContent = bestNow; $('ovLen').textContent = len;
-    $('ovBestLabel').textContent = mode === 'endless' ? 'Serbest rekor' : 'Rekor';
+    $('ovScore').textContent = score; $('ovBest').textContent = prog.best; $('ovLevel').textContent = `${levelIdx + 1}/${LEVELS.length}`;
     $('ovTip').textContent = TIPS[(Math.random() * TIPS.length) | 0];
-    $('btnOverBack').textContent = mode === 'endless' ? 'Ana menü' : 'Harita';
-    show('scrOver');
+    musicScene('menu');   // koşu bitti: sakin menü müziği
+    askName({ s: score, l: levelIdx, f: false }, () => { state = 'over'; show('scrOver'); });
   }, 800);
 }
 
 function evalGoal([t, v], st) {
-  return { clean: st.clean >= v, time: st.time <= v, sneeze: st.sneezes >= v, gold: st.golds >= v, len: st.maxLen >= v, nohard: st.hardened === 0, virus: st.expelled >= v, noinfect: st.replicated === 0, immune: st.immunes >= v }[t];
+  return { time: st.time <= v, sneeze: st.sneezes >= v, gold: st.golds >= v, len: st.maxLen >= v, nohard: st.hardened === 0, virus: st.expelled >= v, noinfect: st.replicated === 0, immune: st.immunes >= v }[t];
 }
 function finishLevel() {
-  state = 'result';
+  state = 'result'; cleared = true;
   const L = LEVELS[levelIdx];
-  const st = { ...lv, clean: Math.round(cleanedCount / freeCells * 100), time: Math.round((gameTime - levelStart) / 1000) };
+  const st = { ...lv, time: Math.round((gameTime - levelStart) / 1000) };
   const got = [true, evalGoal(L.obj[0], st), evalGoal(L.obj[1], st)];
   const mask = got.reduce((m, g, i) => m | (g ? 1 << i : 0), 0);
   prog.mask[levelIdx] |= mask; prog.done[levelIdx] = true; prog.best = Math.max(prog.best, score);
   const newFact = !prog.facts[levelIdx]; prog.facts[levelIdx] = true;
   save();
-  if (st.clean >= 60) award('clean60');
   if (mask === 7) award('perfect');
   if (prog.done.every(Boolean)) award('all');
   if (totalStars() >= 10) award('stars10');
@@ -882,42 +859,34 @@ function finishLevel() {
   const goals = [['Bölümü tamamla', true], [GOAL_TEXT[L.obj[0][0]](L.obj[0][1]), got[1]], [GOAL_TEXT[L.obj[1][0]](L.obj[1][1]), got[2]]];
   $('reGoals').innerHTML = goals.map(([t, g]) => `<li><span class="st ${g ? 'on' : ''}">★</span>${t}<span class="ok ${g ? 'y' : 'n'}">${g ? '✓' : '✗'}</span></li>`).join('');
   $('reVirusWrap').style.display = L.virus ? '' : 'none'; $('reVirus').textContent = lv.expelled;
-  $('reScore').textContent = score; $('reClean').textContent = st.clean + '%'; $('reTime').textContent = st.time + ' sn';
+  $('reScore').textContent = score; $('reLen').textContent = lv.maxLen; $('reTime').textContent = st.time + ' sn';
   $('reFactTitle').textContent = newFact ? 'Yeni bilgi kartı açıldı' : 'Biliyor muydunuz?';
   $('reFact').querySelector('.em').textContent = FACTS[levelIdx][0];
   $('reFactText').textContent = FACTS[levelIdx][1];
   const last = levelIdx === LEVELS.length - 1;
-  $('btnNext').textContent = last ? 'Haritaya dön' : 'Sonraki: ' + LEVELS[levelIdx + 1].name;
-  $('btnMapFromResult').style.display = last ? 'none' : '';
+  if (last) musicScene('win');
+  $('btnNext').textContent = last ? 'Ana menüye dön' : 'Sonraki: ' + LEVELS[levelIdx + 1].name;
   $('reClose').style.display = last ? '' : 'none';
   // önce sinüsün açıldığı an, sonra sonuç kartı
-  revealWave(); callout(L.name + ' açıldı!', 'Hava yeniden akıyor');
+  exitFx(); callout(L.name + ' açıldı!', 'Hava yeniden akıyor');
   setTimeout(() => {
     gateLayer.visible = false;
     if (state !== 'result') return;
-    const starsEl = $('reStars'); starsEl.classList.remove('go');
-    [...starsEl.children].forEach((s, i) => s.classList.toggle('on', got[i]));
-    void starsEl.offsetWidth; starsEl.classList.add('go');
-    got.forEach((g, i) => g && setTimeout(() => sfx('star'), 200 + i * 180));
-    show('scrResult');
+    const reveal = () => {
+      state = 'result';
+      const starsEl = $('reStars'); starsEl.classList.remove('go');
+      [...starsEl.children].forEach((s, i) => s.classList.toggle('on', got[i]));
+      void starsEl.offsetWidth; starsEl.classList.add('go');
+      got.forEach((g, i) => g && setTimeout(() => sfx('star'), 200 + i * 180));
+      show('scrResult');
+    };
+    // oyun bitti: tüm bölümler boyunca biriken skor tabloya
+    if (last) askName({ s: score, l: levelIdx, f: true }, reveal); else reveal();
   }, REDUCED ? 300 : 1500);
 }
-// ostiumdan içeri yayılan temizlik dalgası: kalan doku sırayla ferahlar
-function revealWave() {
+// ostium açıldı: çıkışta köpük ve taç yaprakları
+function exitFx() {
   const ox = Math.min(COLS - 1, Math.max(0, exitX)), oy = Math.min(ROWS - 1, Math.max(0, exitY));
-  const dist = new Int16Array(COLS * ROWS).fill(-1), q = [ox, oy]; dist[oy * COLS + ox] = 0; let h = 0;
-  while (h < q.length) {
-    const x = q[h++], y = q[h++], d0 = dist[y * COLS + x];
-    for (let d = 0; d < 4; d++) {
-      const X = x + DX[d], Y = y + DY[d], i = Y * COLS + X;
-      if (X < 0 || Y < 0 || X >= COLS || Y >= ROWS || dist[i] >= 0 || obstacle[i] === 5) continue;
-      dist[i] = d0 + 1; q.push(X, Y);
-    }
-  }
-  for (let i = 0; i < dist.length; i++) {
-    if (dist[i] < 0 || cleaned[i]) continue;
-    cleanCell(i % COLS, (i / COLS) | 0); cleanAnims[cleanAnims.length - 1].t = -dist[i] * 32; freshCell[i] = 0;
-  }
   sfx('breeze'); foam((ox + .5) * cell, (oy + .5) * cell, 10, 1.5); petalBurst((ox + .5) * cell, (oy + .5) * cell, 16);
 }
 
@@ -954,7 +923,7 @@ function foam(x, y, n, spread) {
     b.max = b.life = 650 + Math.random() * 550; b.size = cell * (.16 + Math.random() * .26); b.ph = Math.random() * 6.28;
   }
 }
-// temizlenen hücre, kuyruk oradan ayrılınca kısa süre çiçek açar
+// akışın ilk geçtiği hücre, kuyruk oradan ayrılınca kısa süre çiçek açar
 const freshCell = new Uint8Array(COLS * ROWS);
 let bloomCursor = 0;
 function vacated(x, y) {
@@ -1064,7 +1033,7 @@ function renderSnake(alpha, dt, now) {
   }
   // yutulan virüs gövdede kuyruğa doğru ilerler, en eskisi en arkada
   for (let j = 0; j < carriedAt.length; j++) {
-    let s = lumpPool[j]; if (!s) { s = new PIXI.Sprite(T.virus); s.anchor.set(.5); lumpLayer.addChild(s); lumpPool[j] = s; }
+    let s = lumpPool[j]; if (!s) { s = new PIXI.Sprite(T.virusBare); s.anchor.set(.5); lumpLayer.addChild(s); lumpPool[j] = s; }
     const i = Math.max(1, Math.min(len - 1 - j, 1 + stepCount - carriedAt[j]));
     s.visible = true; s.position.set((ix[i] + .5) * cell, (iy[i] + .5) * cell);
     s.width = s.height = cell * .58; s.rotation = now * .002 + j * 1.3;
@@ -1098,12 +1067,6 @@ function renderSnake(alpha, dt, now) {
 }
 
 function updateFx(dt, now) {
-  for (let i = cleanAnims.length - 1; i >= 0; i--) {
-    const a = cleanAnims[i]; a.t += dt; const k = Math.max(0, Math.min(1, a.t / 320));   // t < 0: dalgada sırasını bekliyor
-    const sc = k < .6 ? .5 + k / .6 * .62 : 1.12 - (k - .6) / .4 * .18;
-    a.s.width = a.s.height = cell * CLEAN * sc; a.s.alpha = Math.min(1, k * 2.2);
-    if (k >= 1) { a.s.width = a.s.height = cell * CLEAN; a.s.alpha = 1; cleanAnims.splice(i, 1); }
-  }
   const ek = 1 - Math.exp(-dt * .02);
   for (const it of items) {
     it.pop = Math.min(1, it.pop + dt / 260);
@@ -1127,9 +1090,9 @@ function updateFx(dt, now) {
     const p = .5 + .5 * Math.sin(now * .006);
     gateGlow.alpha = exitOpen ? .5 + .5 * p : .12 + .08 * p; gateRing.alpha = exitOpen ? 1 : .4; gateRing.rotation = exitOpen ? -now * .005 : -now * .0008;
   }
-  // iltihap kızarıklığı tıkanıklıkla birlikte solar, bölüm sonunda tamamen kaybolur
-  const inflam = mode === 'adventure' && state !== 'result' ? .3 * (1 - .6 * Math.min(1, eaten / target)) : 0;
-  inflamG.alpha += (inflam - inflamG.alpha) * (state === 'result' ? 1 - Math.exp(-dt * .004) : ek);
+  // iltihap kızarıklığı oyun boyunca sabit (mukus topladıkça zemin açılmaz), yalnızca bölüm temizlenince kaybolur
+  const inflam = mode === 'adventure' && !cleared ? .3 : 0;
+  inflamG.alpha += (inflam - inflamG.alpha) * (cleared ? 1 - Math.exp(-dt * .004) : ek);
   if (cfg.shape) {   // şekilli bölümde kızarıklık ekranın tamamına değil yalnız sinüsün zeminine
     const k = Math.min(1, inflamG.alpha / .3), g = Math.round(255 - 95 * k), b = Math.round(255 - 85 * k);
     floorS.tint = (255 << 16) | (g << 8) | b;
@@ -1217,7 +1180,9 @@ function pushDir(d) {
 }
 const KEYS = { ArrowUp: 0, KeyW: 0, ArrowRight: 1, KeyD: 1, ArrowDown: 2, KeyS: 2, ArrowLeft: 3, KeyA: 3 };
 addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) return;
   if (e.code in KEYS && state === 'play') { e.preventDefault(); pushDir(KEYS[e.code]); return; }
+  if (e.code === 'Escape' && state === 'paused' && (current === 'scrSettings' || current === 'scrConfirm')) { e.preventDefault(); show('scrPause'); return; }
   if (e.code === 'KeyP' || e.code === 'Escape') { e.preventDefault(); togglePause(); }
   if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey && !e.altKey) setFps(!fpsOn);
 });
@@ -1248,10 +1213,9 @@ function show(id) {
 }
 let lastScore = -1;
 function hudScore() { if (score !== lastScore) { $('hudScore').textContent = score; lastScore = score; } }
-function hudLevel() { $('hudLevel').textContent = mode === 'endless' ? 'Serbest akış' : `${levelIdx + 1}. ${cfg.name}`; }
+function hudLevel() { $('hudLevel').textContent = `${levelIdx + 1}. ${cfg.name}`; }
 function hudBar() {
   const fill = $('hudFill'), lab = $('hudBarLabel');
-  if (mode === 'endless') { const tier = 1 + Math.floor(eaten / 5); fill.classList.remove('open'); fill.style.transform = `scaleX(${(eaten % 5) / 5})`; lab.textContent = `Hız ${tier}`; return; }
   if (exitOpen) { fill.classList.add('open'); fill.style.transform = 'scaleX(1)'; lab.textContent = 'Ostium açık'; return; }
   const r = Math.max(0, 1 - eaten / target);
   fill.classList.remove('open'); fill.style.transform = `scaleX(${r})`; lab.textContent = `Tıkanıklık %${Math.round(r * 100)}`;
@@ -1271,31 +1235,10 @@ function hideHint() { if ($('hint').classList.contains('on')) { $('hint').classL
 
 function homeStats() {
   $('hsBadgesTotal').textContent = BADGES.length; $('hsStarsTotal').textContent = LEVELS.length * 3;
-  $('hsStars').textContent = totalStars(); $('hsBadges').textContent = Object.keys(prog.badges).length; $('hsBest').textContent = Math.max(prog.best, prog.endlessBest);
-  $('btnAdventure').textContent = prog.done.some(Boolean) ? 'Devam et' : 'Oyna';
+  $('hsStars').textContent = totalStars(); $('hsBadges').textContent = BADGES.filter(b => prog.badges[b[0]]).length; $('hsBest').textContent = prog.best;
 }
-function goHome() { mode = 'demo'; setupBoard(DEMO); state = 'demo'; homeStats(); show('scrHome'); }
+function goHome() { mode = 'demo'; setupBoard(DEMO); state = 'demo'; homeStats(); show('scrHome'); musicScene('menu'); musicDuck(false); }
 
-function starsHTML(m) { return [0, 1, 2].map(i => `<span class="${m >> i & 1 ? 'on' : ''}">★</span>`).join(''); }
-function openMap() {
-  // perdeler arasında başlık için fazladan boşluk
-  const X = [30, 70, 30, 70, 30, 70], gap = 96, actGap = 60, top = 84;
-  const Y = LEVELS.map((L, i) => top + i * gap + L.act * actGap), H = Y[Y.length - 1] + 70;
-  const next = prog.done.findIndex(d => !d);
-  let svg = `<svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" aria-hidden="true"><path d="`;
-  LEVELS.forEach((_, i) => { const m = (Y[i - 1] + Y[i]) / 2; svg += (i ? `C ${X[i - 1]} ${m}, ${X[i]} ${m}, ` : 'M ') + `${X[i]} ${Y[i]} `; });
-  svg += `" fill="none" stroke="#F1D9E1" stroke-width="6" stroke-linecap="round" stroke-dasharray="1 12" vector-effect="non-scaling-stroke"/></svg>`;
-  const nodes = LEVELS.map((L, i) => {
-    const lock = !unlocked(i), done = prog.done[i];
-    return `<button class="node ${lock ? 'lock' : done ? 'done' : ''} ${i === next ? 'next' : ''}" style="left:${X[i]}%;top:${Y[i]}px" data-lv="${i}" ${lock ? 'aria-disabled="true"' : ''} aria-label="Bölüm ${i + 1}: ${L.name}${lock ? ', kilitli' : ''}">
-      <span class="disc">${lock ? '🔒' : i + 1}</span><span class="nm">${L.name}</span><span class="stars">${starsHTML(prog.mask[i])}</span></button>`;
-  }).join('');
-  const acts = ACTS.map((name, a) => { const i = LEVELS.findIndex(L => L.act === a); return `<div class="act" style="top:${Y[i] - 80}px"><span>${a + 1}. perde</span>${name}</div>`; }).join('');
-  $('map').style.height = H + 'px'; $('map').innerHTML = svg + acts + nodes;
-  $('map').querySelectorAll('.node').forEach(n => n.onclick = () => { const i = +n.dataset.lv; if (unlocked(i)) openIntro(i); });
-  show('scrMap');
-  setTimeout(() => { const n = $('map').querySelector('.next') || $('map').querySelector('.node'); n && n.scrollIntoView({ block: 'center' }); }, 40);
-}
 function legendKeys(c) {
   const k = ['mucus'];
   if (c.gold) k.push('gold'); if (c.serum) k.push('serum'); if (c.breeze) k.push('breeze');
@@ -1312,28 +1255,22 @@ function legendFor(c, prev = []) {
   const old = prev.flatMap(legendKeys), k = legendKeys(c).filter(t => !old.includes(t));
   return k.map(t => `<div><img alt="" src="${iconURL[t]}"><span><b>${ITEM_INFO[t][0]}</b><span>${ITEM_INFO[t][1]}</span></span></div>`).join('');
 }
-let introBack = 'map';
-function openIntro(i) {
-  mode = 'adventure'; levelIdx = i; score = 0; lastScore = -1; gameSneezes = 0;
-  setupBoard(LEVELS[i]); state = 'intro'; introBack = 'map';
+// Oyun tek koşu: 1. bölümden başlar, ölünce biter (bölüm tekrarı yok). base: önceki bölümlerden gelen skor
+function openIntro(i, base = 0) {
+  mode = 'adventure'; levelIdx = i; score = base; lastScore = -1; gameSneezes = 0;
+  musicScene('act' + LEVELS[i].act); musicDuck(false);   // her perdenin kendi parçası
+  setupBoard(LEVELS[i]); state = 'intro';
   const L = LEVELS[i];
   $('inKicker').textContent = `${L.act + 1}. perde: ${ACTS[L.act]} · Bölüm ${i + 1}/${LEVELS.length}`;
   $('tIntro').textContent = L.name;
-  $('inDesc').textContent = L.desc + (i === 0 ? ' Masaüstünde ok tuşları ya da WASD kullanabilirsin.' : '');
+  $('inDesc').textContent = L.desc + (i === 0 ? ' Masaüstünde ok tuşları ya da WASD kullanabilirsin. Akış takılırsa oyun biter: altı bölümü tek seferde geçmeye çalış.' : '');
   const legend = legendFor(L, LEVELS.slice(0, i));
   $('inLegend').innerHTML = legend; $('inNew').style.display = legend ? '' : 'none';
   $('inGoalsWrap').style.display = '';
   const m = prog.mask[i];
   $('inGoals').innerHTML = [['Bölümü tamamla', m & 1], [GOAL_TEXT[L.obj[0][0]](L.obj[0][1]), m & 2], [GOAL_TEXT[L.obj[1][0]](L.obj[1][1]), m & 4]]
     .map(([t, g]) => `<li><span class="st ${g ? 'on' : ''}">★</span>${t}</li>`).join('');
-  hudLevel(); hudScore(); hudBar(); show('scrIntro');
-}
-function openEndless() {
-  mode = 'endless'; levelIdx = 0; score = 0; lastScore = -1; gameSneezes = 0;
-  setupBoard(ENDLESS); state = 'intro'; introBack = 'home';
-  $('inKicker').textContent = `Rekor: ${prog.endlessBest}`;
-  $('tIntro').textContent = ENDLESS.name; $('inDesc').textContent = ENDLESS.desc;
-  $('inLegend').innerHTML = legendFor(ENDLESS); $('inNew').style.display = ''; $('inGoalsWrap').style.display = 'none';
+  $('inBack').style.display = i ? 'none' : '';   // koşunun ortasında geri dönüş yok
   hudLevel(); hudScore(); hudBar(); show('scrIntro');
 }
 function begin() {
@@ -1343,16 +1280,16 @@ function begin() {
     $('hint').classList.add('on');
   }
 }
-function retry() { if (mode === 'endless') { openEndless(); begin(); } else { openIntro(levelIdx); begin(); } }
+function newRun() { initAudio(); openIntro(0); begin(); }
 function togglePause(force) {
-  if (state === 'play' || state === 'exiting') { pausedFrom = state; state = 'paused'; show('scrPause'); }
-  else if (state === 'paused' && force !== true) { state = pausedFrom; show(null); }
+  if (state === 'play' || state === 'exiting') { pausedFrom = state; state = 'paused'; show('scrPause'); musicDuck(true); }
+  else if (state === 'paused' && force !== true) { state = pausedFrom; show(null); musicDuck(false); }
 }
 
 let tab = 'skins';
 function openCollect(t) {
   if (t) tab = t;
-  document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === tab));
+  document.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === tab));
   const ts = totalStars(), body = $('collectBody');
   if (tab === 'skins') {
     body.innerHTML = `<p>Yıldız topladıkça yeni görünümler açılır. Şu an <b>${ts}</b> yıldızın var.</p><div class="grid">` + SKINS.map((s, i) => {
@@ -1369,6 +1306,27 @@ function openCollect(t) {
   }
   show('scrCollect');
 }
+// Bilgilendirme: antibiyotik ve sinüzit (sitenin metinleri, kaynaklarıyla) ve nasıl oynanır
+let infoTab = 'learn';
+function openInfo(t) {
+  if (t) infoTab = t;
+  document.querySelectorAll('[data-info]').forEach(b => b.setAttribute('aria-selected', b.dataset.info === infoTab));
+  const body = $('infoBody');
+  if (infoTab === 'learn') {
+    body.innerHTML = '<div class="facts">' + INFO.map(([em, t, tx, src]) =>
+      `<div class="fact"><div class="em">${em}</div><div><strong>${t}</strong><p>${tx}</p>${src ? `<span class="src">Kaynak: ${src}</span>` : ''}</div></div>`).join('') + '</div>'
+      + `<div class="tip close" style="margin:12px 0 0"><b>Unutma:</b> ${CLOSING} <a href="https://yasasinsaglik.com/antibiyotik-direnci" target="_blank" rel="noopener">Daha fazlası</a></div>`
+      + '<p class="legal">Bu bilgiler genel bilgilendirme amaçlıdır; tanı koymaz, tedavi önermez. Sağlığınızla ilgili konularda eczacınıza ve doktorunuza danışın.</p>';
+  } else {
+    body.innerHTML = '<ol class="steps">' + HOWTO.map(t => `<li>${t}</li>`).join('') + '</ol>'
+      + '<p class="sub">Oyunda neler var?</p><div class="legend">'
+      + Object.keys(ITEM_INFO).filter(k => k !== 'swell').map(k => `<div><img alt="" src="${iconURL[k]}"><span><b>${ITEM_INFO[k][0]}</b><span>${ITEM_INFO[k][1]}</span></span></div>`).join('') + '</div>';
+  }
+  $('scrInfo').querySelector('.card').scrollTop = 0;
+  show('scrInfo');
+}
+document.querySelectorAll('[data-info]').forEach(b => b.onclick = () => openInfo(b.dataset.info));
+
 // koleksiyon kartı için başın küçük resmi (oyundaki dokulardan)
 const previewCache = {};
 function skinPreview(i) {
@@ -1392,40 +1350,105 @@ function applySkin() {
   headFace.texture = skin.classic ? T.face : T.face2;
 }
 
-// ilk kez oynayan doğrudan 1. bölüme girer; anlatım oyunun içinde
-$('btnAdventure').onclick = () => { initAudio(); if (!prog.done[0]) { openIntro(0); begin(); } else openMap(); };
-$('btnEndless').onclick = () => { initAudio(); openEndless(); };
+// ilk kez oynayan doğrudan oyuna girer; sonrakilerde 1. bölümün tanıtımı
+$('btnAdventure').onclick = () => { initAudio(); if (!prog.done[0]) newRun(); else openIntro(0); };
+$('btnInfo').onclick = () => openInfo();
 $('btnCollect').onclick = () => openCollect();
-document.querySelectorAll('.tab').forEach(b => b.onclick = () => openCollect(b.dataset.tab));
-document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => {
-  if (current === 'scrIntro' && introBack === 'map') openMap(); else goHome();
-});
+document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => openCollect(b.dataset.tab));
+document.querySelectorAll('[data-back]').forEach(b => b.onclick = goHome);
 $('btnStart').onclick = begin;
-$('btnNext').onclick = () => { if (levelIdx < LEVELS.length - 1) { openIntro(levelIdx + 1); } else goHomeMap(); };
-$('btnReplay').onclick = retry;
-$('btnMapFromResult').onclick = goHomeMap;
-$('btnRetry').onclick = retry;
-$('btnOverBack').onclick = () => mode === 'endless' ? goHome() : goHomeMap();
+$('btnNext').onclick = () => { if (levelIdx < LEVELS.length - 1) openIntro(levelIdx + 1, score); else goHome(); };
+$('btnRetry').onclick = newRun;   // ölüm kaydedildi: yeni koşu 1. bölümden
+$('btnOverBack').onclick = goHome;
 $('btnResume').onclick = () => togglePause();
-$('btnRestart').onclick = retry;
-$('btnQuit').onclick = goHome;
+$('btnPauseSettings').onclick = () => openSettings('scrPause');
+$('btnQuit').onclick = () => show('scrConfirm');   // ana menüye dönmeden önce sor: oyun biter
+$('btnConfirmNo').onclick = () => show('scrPause');
+$('btnConfirmYes').onclick = goHome;
 $('btnPause').onclick = () => togglePause();
-$('btnMute').onclick = () => { prog.muted = !prog.muted; save(); setMute(); initAudio(); };
-function goHomeMap() { mode = 'demo'; setupBoard(DEMO); state = 'demo'; openMap(); }
+const applyVolumes = () => setVolumes(prog.sfxVol, prog.musicVol, prog.muted);
+$('btnMute').onclick = () => { prog.muted = !prog.muted; save(); setMute(); initAudio(); applyVolumes(); };
 
-document.addEventListener('visibilitychange', () => { if (document.hidden) togglePause(true); });
+/* =========================================================================
+   AYARLAR: ses, ses efektleri ve müzik seviyesi (müzik sonraki güncellemede), titreşim. Yalnızca bu cihazda.
+   ========================================================================= */
+let settingsFrom = 'scrHome';
+function syncSettings() {
+  $('setSound').setAttribute('aria-checked', !prog.muted);
+  $('setSfx').value = Math.round(prog.sfxVol * 100); $('setSfxOut').textContent = $('setSfx').value + '%';
+  $('setMusic').value = Math.round(prog.musicVol * 100); $('setMusicOut').textContent = $('setMusic').value + '%';
+  $('setVibrate').setAttribute('aria-checked', !!prog.vibrate);
+  $('setVibrateRow').style.display = 'vibrate' in navigator ? '' : 'none';   // titreşimi desteklemeyen cihazda gizli
+}
+function openSettings(from) { settingsFrom = from; syncSettings(); show('scrSettings'); }
+$('setSound').onclick = () => { prog.muted = !prog.muted; save(); setMute(); syncSettings(); initAudio(); applyVolumes(); if (!prog.muted) playSfx('eat'); };
+$('setSfx').oninput = () => { prog.sfxVol = $('setSfx').value / 100; $('setSfxOut').textContent = $('setSfx').value + '%'; applyVolumes(); };
+$('setSfx').onchange = () => { save(); initAudio(); if (!prog.muted) playSfx('eat'); };   // bırakınca örnek ses
+$('setMusic').oninput = () => { prog.musicVol = $('setMusic').value / 100; $('setMusicOut').textContent = $('setMusic').value + '%'; applyVolumes(); save(); };
+$('setVibrate').onclick = () => { prog.vibrate = !prog.vibrate; save(); syncSettings(); buzz(30); };
+$('settingsBack').onclick = () => { if (settingsFrom === 'scrPause' && state === 'paused') show('scrPause'); else goHome(); };
+$('btnSettings').onclick = () => openSettings('scrHome');
+
+/* =========================================================================
+   SKOR TABLOSU: ölünce ya da oyun bitince isim zorunlu; liste yalnızca bu cihazda
+   ========================================================================= */
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+let nameDone = null, boardMine = null, boardThen = null;
+function askName(entry, then) {
+  state = 'name';
+  $('nmKicker').textContent = entry.f ? 'Tüm sinüsler açıldı!' : 'Akış takıldı';
+  $('nmScore').textContent = entry.s;
+  $('nmSub').textContent = entry.f ? 'Skor · tüm bölümler' : `Skor · ${entry.l + 1}. bölüm`;
+  $('nameInput').value = ''; $('btnSaveName').disabled = true;
+  nameDone = n => openBoard(addScore('adventure', { ...entry, n }), then);
+  show('scrName'); setTimeout(() => $('nameInput').focus({ preventScroll: true }), 60);
+}
+$('nameInput').oninput = () => { $('btnSaveName').disabled = !cleanName($('nameInput').value); };
+$('nameForm').onsubmit = (e) => {
+  e.preventDefault();
+  const n = cleanName($('nameInput').value), f = nameDone;
+  if (!n || !f) { $('nameInput').focus(); return; }
+  nameDone = null; $('nameInput').blur(); f(n);
+};
+// mine: az önce kaydedilen skor (vurgulanır); then: varsa "Devam" ile dönülecek ekran, yoksa ana menüden açılmıştır
+function openBoard(mine = null, then = null) {
+  boardMine = mine; boardThen = then;
+  $('boardBack').style.display = then ? 'none' : ''; $('boardActions').style.display = then ? '' : 'none';
+  renderBoard(); show('scrBoard');
+  // küçük ekranda kendi satırı görünsün: yalnızca kart kayar
+  const card = $('scrBoard').querySelector('.card'), me = $('boardList').querySelector('.me');
+  card.scrollTop = 0;
+  if (me) card.scrollTop = Math.max(0, me.getBoundingClientRect().top - card.getBoundingClientRect().top - card.clientHeight / 2);
+  if (then && kbMode) setTimeout(() => $('btnBoardNext').focus({ preventScroll: true }), 30);
+}
+function renderBoard() {
+  const list = prog.scores.adventure, mine = boardMine;
+  const row = (e, i) => `<li class="${mine && e.id === mine.id ? 'me' : ''}"><span class="rk">${i + 1}</span><span class="nm"><b>${esc(e.n)}</b></span><span class="sc">${e.s}</span></li>`;
+  let html = list.slice(0, 10).map(row).join('');
+  const at = mine ? list.findIndex(e => e.id === mine.id) : -1;
+  if (at >= 10) html += row(list[at], at);   // ilk 10'da değilse kendi satırı altta
+  $('boardList').innerHTML = html || '<li class="empty">Henüz skor yok. İlk sen ol!</li>';
+  $('boardRank').textContent = mine ? (mine.rank === 1 ? 'Tablonun zirvesindesin!' : `Sıran: ${mine.rank}.`) : '';
+  $('boardRank').style.display = mine ? '' : 'none';
+}
+$('btnBoard').onclick = () => openBoard();
+$('btnBoardNext').onclick = () => { const f = boardThen; boardThen = null; if (f) f(); };
+
+document.addEventListener('visibilitychange', () => { if (document.hidden) togglePause(true); audioHidden(document.hidden); });
+// tarayıcı sesi ancak bir dokunuştan sonra açar: ilk dokunuşta ya da tuşta müzik başlar
+for (const t of ['pointerdown', 'keydown']) addEventListener(t, () => initAudio(), true);
 addEventListener('blur', () => togglePause(true));
 
 // #debug: tarayıcı konsolu ve denge testi (tools/denge-testi.mjs) için kancalar
 if (DEBUG) window.__ns = {
-  step, botDir, addVirus, prog,
+  step, botDir, addVirus, prog, createMusic,
   get st() { return { state, mode, len, eaten, target, exitOpen, score, levelIdx, reason: deathReason }; },
   items: () => items.map(i => [i.type, i.x, i.y]), viruses: () => viruses.map(v => [v.x, v.y]),
   head: () => [bx[0], by[0]], body: () => Array.from({ length: len }, (_, i) => [bx[i], by[i]]), obs: (x, y) => obstacle[y * COLS + x],
   mover: (x, y) => !!moverAt(x, y), exit: () => exits, setDir: d => { dir = d; queue.length = 0; }, dir: () => dir,
   carried: () => carriedAt.length, lv: () => lv, spawn, callout, die,
   // bölümü bot oynar
-  play(i) { if (i === 'endless') openEndless(); else openIntro(i); begin(); autoBot = true; },
+  play(i) { openIntro(i); begin(); autoBot = true; }, intro: openIntro,
   run(maxMs = 300000) {
     const t0 = gameTime;
     while ((state === 'play' || state === 'exiting') && gameTime - t0 < maxMs) simTick(16);
@@ -1435,5 +1458,5 @@ if (DEBUG) window.__ns = {
 };
 
 $('reCloseText').textContent = CLOSING;
-setMute(); applySkin(); layout(); goHome();
+setMute(); applyVolumes(); applySkin(); layout(); goHome();
 })();

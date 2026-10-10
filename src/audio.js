@@ -1,11 +1,29 @@
 /* =========================================================================
    SES
    ========================================================================= */
-let actx = null, noiseBuf = null;
+import { createMusic } from './music.js';
+
+let actx = null, noiseBuf = null, sfxBus = null, musicBus = null, music = null, hidden = false, scene = 'menu', ducked = false;
+const vol = { sfx: .8, music: .6, muted: false };
+// iki ayrı ses kanalı: efektler ve müzik. Susturma ikisini de kapatır.
+export function setVolumes(sfx, mus, muted) {
+  vol.sfx = sfx; vol.music = mus; vol.muted = !!muted;
+  if (!sfxBus) return;
+  const t = actx.currentTime;
+  for (const [b, v] of [[sfxBus, muted ? 0 : sfx], [musicBus, muted ? 0 : mus * .9]]) { b.gain.cancelScheduledValues(t); b.gain.setTargetAtTime(v, t, .05); }
+}
+// sahne: menu | act0 | act1 | act2 | win. Ses başlamadan çağrılırsa saklanır.
+export function musicScene(name) { scene = name; if (music) music.setScene(name); }
+export function musicDuck(on) { ducked = on; if (music) music.duck(on); }
+// sekme gizlenince ses tamamen durur, geri gelince devam eder
+export function audioHidden(h) { hidden = h; if (actx) { if (h) actx.suspend(); else actx.resume(); } }
 export function initAudio() {
-  if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
+  if (actx) { if (actx.state === 'suspended' && !hidden) actx.resume(); return; }
   try {
     actx = new (window.AudioContext || window.webkitAudioContext)();
+    sfxBus = actx.createGain(); musicBus = actx.createGain();
+    sfxBus.connect(actx.destination); musicBus.connect(actx.destination); setVolumes(vol.sfx, vol.music, vol.muted);
+    music = createMusic(actx, musicBus); music.setScene(scene); music.duck(ducked); music.start();
     noiseBuf = actx.createBuffer(1, actx.sampleRate * 0.4, actx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
@@ -15,7 +33,7 @@ function tone(type, f0, f1, dur, vol = 0.12, delay = 0) {
   const t = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain();
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+  o.connect(g).connect(sfxBus); o.start(t); o.stop(t + dur + 0.02);
 }
 // susturma ve demo kontrolü çağıran tarafta
 export function playSfx(name) {
@@ -39,7 +57,7 @@ export function playSfx(name) {
       const t = actx.currentTime, s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
       s.buffer = noiseBuf; f.type = 'bandpass'; f.frequency.setValueAtTime(2400, t); f.frequency.exponentialRampToValueAtTime(700, t + 0.3); f.Q.value = 0.9;
       g.gain.setValueAtTime(0.35, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
-      s.connect(f).connect(g).connect(actx.destination); s.start(t); break;
+      s.connect(f).connect(g).connect(sfxBus); s.start(t); break;
     }
   }
 }

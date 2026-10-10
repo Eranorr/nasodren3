@@ -1,6 +1,6 @@
 /*
  * EKRAN TESTİ
- * Bütün ekranları (ana ekran, koleksiyon, harita, bölüm girişi, oyun, duraklat, sonuç, oyun sonu)
+ * Bütün ekranları (ana ekran, bilgilendirme, koleksiyon, bölüm girişi, oyun, duraklat, sonuç, oyun sonu)
  * telefon, yatay telefon, tablet ve masaüstü boyutlarında açar; her tıklanabilir öğe için ölçer:
  * ekranın/kartın içinde mi, başka bir öğenin altında mı, rozet bildirimi ya da ekran mesajı üstüne biniyor mu,
  * yazısı kesik mi. Her ekran için bütün boyutları yan yana gösteren bir kontrol görüntüsü de üretir.
@@ -29,16 +29,28 @@ const SCREENS = {
   collectSkins: async p => { await p.click('#btnCollect'); },
   collectBadges: async p => { await p.click('#btnCollect'); await p.click('.tab[data-tab="badges"]'); },
   collectFacts: async p => { await withProg(p); await p.click('#btnCollect'); await p.click('.tab[data-tab="facts"]'); },
-  map: async p => { await withProg(p); await p.click('#btnAdventure'); await p.waitForTimeout(150); },
-  intro1: async p => { await withProg(p); await p.click('#btnAdventure'); await p.evaluate(() => document.querySelector('.node[data-lv="0"]').click()); },
-  intro4: async p => { await withProg(p); await p.click('#btnAdventure'); await p.evaluate(() => document.querySelector('.node[data-lv="3"]').click()); },
-  endlessIntro: async p => { await p.click('#btnEndless'); },
+  intro1: async p => { await withProg(p); await p.click('#btnAdventure'); },
+  intro4: async p => { await withProg(p); await p.evaluate(() => window.__ns.intro(3, 1200)); },
+  infoLearn: async p => { await p.click('#btnInfo'); },
+  infoHowto: async p => { await p.click('#btnInfo'); await p.click('.tab[data-info="howto"]'); },
   play: async p => { await p.evaluate(() => window.__ns.play(2)); await p.waitForTimeout(1200); await p.evaluate(() => window.__ns.callout('Bağışıklık hücresi geldi', 'Topla, virüsler bir süre çoğalamasın')); await p.waitForTimeout(400); },
   pause: async p => { await p.evaluate(() => window.__ns.play(2)); await p.waitForTimeout(600); await p.click('#btnPause'); },
+  settings: async p => { await p.evaluate(() => window.__ns.play(2)); await p.waitForTimeout(600); await p.click('#btnPause'); await p.click('#btnPauseSettings'); },
+  settingsHome: async p => { await p.click('#btnSettings'); },
+  confirm: async p => { await p.evaluate(() => window.__ns.play(2)); await p.waitForTimeout(600); await p.click('#btnPause'); await p.click('#btnQuit'); },
   result: async p => { await p.evaluate(() => { window.__ns.play(0); window.__ns.run(); }); await p.waitForTimeout(1900); },
-  resultLast: async p => { await p.evaluate(() => { window.__ns.play(5); window.__ns.run(); }); await p.waitForTimeout(1900); },
-  over: async p => { await p.evaluate(() => { window.__ns.play(2); window.__ns.die('wall'); }); await p.waitForTimeout(1100); },
+  resultLast: async p => { await p.evaluate(() => { window.__ns.play(5); window.__ns.run(); }); await p.waitForTimeout(1900); await enterName(p); await p.click('#btnBoardNext'); },
+  over: async p => { await p.evaluate(() => { window.__ns.play(2); window.__ns.die('wall'); }); await p.waitForTimeout(1100); await enterName(p); await p.click('#btnBoardNext'); },
+  name: async p => { await p.evaluate(() => { window.__ns.play(2); window.__ns.die('wall'); }); await p.waitForTimeout(1100); await p.fill('#nameInput', 'Ayşe Nur'); },
+  board: async p => { await seedScores(p); await p.evaluate(() => { window.__ns.play(1); window.__ns.die('wall'); }); await p.waitForTimeout(1100); await enterName(p); },
+  boardHome: async p => { await seedScores(p); await p.click('#btnBoard'); },
 };
+// ölünce ve oyun bitince isim zorunlu: test akışları adı girip kaydeder
+async function enterName(p) { await p.fill('#nameInput', 'Test Oyuncu'); await p.click('#btnSaveName'); await p.waitForTimeout(150); }
+async function seedScores(p) {
+  await p.evaluate(() => { const g = window.__ns.prog, n = ['Ayşe', 'Mehmet Can', 'Zeynep Su', 'Ali', 'Elif Naz', 'Burak', 'Deniz', 'Selin Yıldız', 'Emre', 'Ece', 'Kaan'];
+    g.scores.adventure = n.map((x, i) => ({ n: x, s: 4200 - i * 330, l: Math.min(5, 5 - (i >> 1)), f: i === 0, id: i, d: Date.now() })); });
+}
 
 // sayfada: etkin ekrandaki tıklanabilir her öğe için görünürlük, örtülme, yazı kesilmesi
 const audit = () => {

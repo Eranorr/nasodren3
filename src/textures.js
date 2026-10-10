@@ -31,6 +31,15 @@ function flower(x, cx, cy, r, fill, center, n = 5, rot = -Math.PI / 2) {
   }
   if (center) { x.fillStyle = center; x.beginPath(); x.arc(cx, cy, r * .22, 0, 6.28); x.fill(); }
 }
+// oyundaki öğe dokusu: öğenin arkasına yumuşak bir hale (toplanabilirlerde açık, virüste koyu) eklenir; öğe dokunun
+// 1/HALO'su kadar yer kaplar. Küçük ekranda ve koyu sinüs zemininde öğeler seçilsin diye. DOM ikonları halesiz dokuyu kullanır.
+export const HALO = 1.6;
+export function halo(src, rgb, a) {
+  const S = Math.round(TS * HALO), c = document.createElement('canvas'); c.width = c.height = S; const x = c.getContext('2d');
+  x.fillStyle = rg(x, S / 2, S / 2, 0, S / 2, S / 2, S / 2, [[0, `rgba(${rgb},${a})`], [.55, `rgba(${rgb},${a * .8})`], [1, `rgba(${rgb},0)`]]);
+  x.fillRect(0, 0, S, S); x.drawImage(src, (S - TS) / 2, (S - TS) / 2);
+  return c;
+}
 export const C = {};
 // yılan gövdesi: gri tonlu, tint ile renklenir (görünümler tek doku ile)
 C.ball = (() => { const [c, x] = cnv();
@@ -51,19 +60,20 @@ C.dot = (() => { const [c, x] = cnv(); x.fillStyle = '#fff'; x.beginPath(); x.ar
 C.mucus = [11, 23, 37].map(sd => { const [c, x] = cnv(), rnd = seeded(sd);
   blob(x, TS / 2, TS * .54, TS * .4, 4, .08, rnd);
   x.fillStyle = rg(x, TS * .4, TS * .38, 4, TS / 2, TS / 2, TS * .5, [[0, '#F0F28C'], [.55, '#C3CF3E'], [1, '#8F9A1C']]); x.fill();
-  x.lineWidth = 4; x.strokeStyle = '#7C8617'; x.stroke();
+  x.lineWidth = 10; x.strokeStyle = '#5E6810'; x.stroke();
   eyes(x, TS / 2, TS * .5, TS * .13, TS * .085, 'grumpy');
   x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .03; x.lineCap = 'round'; x.beginPath(); x.arc(TS / 2, TS * .75, TS * .07, Math.PI + .5, -.5); x.stroke();
   return c; });
 C.gold = (() => { const [c, x] = cnv();
   x.fillStyle = rg(x, TS / 2, TS / 2, 0, TS / 2, TS / 2, TS / 2, [[0, 'rgba(255,220,120,.55)'], [1, 'rgba(255,220,120,0)']]); x.fillRect(0, 0, TS, TS);
+  flower(x, TS / 2, TS / 2, TS * .46, '#A8650A');   // kontur
   flower(x, TS / 2, TS / 2, TS * .4, rg(x, TS / 2, TS / 2, 2, TS / 2, TS / 2, TS * .45, [[0, '#FFF3C4'], [.6, '#F8C537'], [1, '#D8920F']]), '#D6227F');
   return c; })();
 C.serum = (() => { const [c, x] = cnv();
   x.beginPath(); x.moveTo(TS / 2, TS * .08); x.bezierCurveTo(TS * .8, TS * .4, TS * .84, TS * .62, TS * .82, TS * .66);
   x.arc(TS / 2, TS * .64, TS * .32, .1, Math.PI - .1); x.bezierCurveTo(TS * .16, TS * .62, TS * .2, TS * .4, TS / 2, TS * .08);
   const g = x.createLinearGradient(0, TS * .08, 0, TS * .96); g.addColorStop(0, '#DDF2FF'); g.addColorStop(1, '#5AAEEB'); x.fillStyle = g; x.fill();
-  x.lineWidth = 4; x.strokeStyle = '#3F8FCC'; x.stroke();
+  x.lineWidth = 9; x.strokeStyle = '#2B73B0'; x.stroke();
   eyes(x, TS / 2, TS * .62, TS * .12, TS * .07, 'happy');
   x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .03; x.lineCap = 'round'; x.beginPath(); x.arc(TS / 2, TS * .72, TS * .06, .3, Math.PI - .3); x.stroke();
   return c; })();
@@ -71,7 +81,7 @@ C.breeze = (() => { const [c, x] = cnv();
   x.save(); x.translate(TS / 2, TS / 2); x.rotate(-.7);
   x.beginPath(); x.moveTo(0, -TS * .42); x.bezierCurveTo(TS * .36, -TS * .2, TS * .3, TS * .3, 0, TS * .42); x.bezierCurveTo(-TS * .3, TS * .3, -TS * .36, -TS * .2, 0, -TS * .42);
   const g = x.createLinearGradient(-TS * .3, 0, TS * .3, 0); g.addColorStop(0, '#7BE3A8'); g.addColorStop(1, '#2FAE6E'); x.fillStyle = g; x.fill();
-  x.lineWidth = 4; x.strokeStyle = '#1F8A55'; x.stroke();
+  x.lineWidth = 9; x.strokeStyle = '#17703F'; x.stroke();
   x.strokeStyle = 'rgba(255,255,255,.8)'; x.lineWidth = 4; x.beginPath(); x.moveTo(0, -TS * .34); x.quadraticCurveTo(TS * .04, 0, 0, TS * .36); x.stroke();
   x.restore();
   x.strokeStyle = '#fff'; x.lineWidth = 5; x.lineCap = 'round';
@@ -110,11 +120,6 @@ C.portal = (() => { const [c, x] = cnv();
     x.beginPath(); x.arc(TS / 2, TS / 2, TS * (.42 - i * .12), i * 2 + Math.PI, i * 2 + Math.PI * 2.35); x.stroke();
   }
   return c; })();
-// temiz doku: düz renkli yuvarlak leke; üst üste binen lekeler dikişsiz tek bir iz gibi görünsün diye degrade yok
-C.fresh = (() => { const [c, x] = cnv();
-  x.fillStyle = rg(x, TS / 2, TS / 2, 0, TS / 2, TS / 2, TS / 2, [[0, '#E0F7F1'], [.93, '#E0F7F1'], [1, 'rgba(224,247,241,0)']]);
-  x.fillRect(0, 0, TS, TS);
-  return c; })();
 C.petal = (() => { const [c, x] = cnv();
   x.translate(TS / 2, TS / 2); x.beginPath(); x.moveTo(0, TS * .42); x.bezierCurveTo(TS * .34, TS * .1, TS * .22, -TS * .38, 0, -TS * .44); x.bezierCurveTo(-TS * .22, -TS * .38, -TS * .34, TS * .1, 0, TS * .42);
   const g = x.createLinearGradient(0, -TS * .44, 0, TS * .42); g.addColorStop(0, '#F9B7D3'); g.addColorStop(1, '#E6559A'); x.fillStyle = g; x.fill();
@@ -129,7 +134,7 @@ C.virus = (() => { const [c, x] = cnv(), cx = TS / 2, cy = TS / 2, r = TS * .28;
   }
   x.beginPath(); x.arc(cx, cy, r, 0, 6.28);
   x.fillStyle = rg(x, cx - r * .35, cy - r * .4, 3, cx, cy, r, [[0, '#FFB07A'], [.6, '#F2683A'], [1, '#C8432A']]); x.fill();
-  x.lineWidth = 4; x.strokeStyle = '#9E3218'; x.stroke();
+  x.lineWidth = 7; x.strokeStyle = '#8A2A12'; x.stroke();
   eyes(x, cx, cy - r * .05, r * .38, r * .24, 'grumpy');
   x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .03; x.beginPath(); x.arc(cx, cy + r * .6, r * .2, Math.PI + .5, -.5); x.stroke();
   return c; })();
@@ -200,14 +205,14 @@ C.bubble = (() => { const [c, x] = cnv();
   x.lineWidth = 6; x.strokeStyle = 'rgba(110,196,226,.9)'; x.stroke();
   x.strokeStyle = '#fff'; x.lineWidth = 7; x.lineCap = 'round'; x.beginPath(); x.arc(64, 64, 38, Math.PI * 1.1, Math.PI * 1.45); x.stroke();
   return c; })();
-// temizlenen hücrede kısa süre açan çiçek
+// akışın kuyruğu ayrılınca hücrede kısa süre açan çiçek
 C.bloom = (() => { const [c, x] = cnv(); flower(x, 64, 64, 56, '#ffffff', '#F4B81F'); return c; })();
 // bağışıklık hücresi (akyuvar): tırtıklı zarlı, içinde loblu çekirdek görünen güler yüzlü hücre; virüslerin çoğalmasını bir süre durdurur
 C.immune = (() => { const [c, x] = cnv(), rnd = seeded(23);
   x.fillStyle = rg(x, TS / 2, TS / 2, TS * .3, TS / 2, TS / 2, TS / 2, [[0, 'rgba(180,160,255,.35)'], [1, 'rgba(180,160,255,0)']]); x.fillRect(0, 0, TS, TS);
   blob(x, TS / 2, TS / 2, TS * .45, 9, .045, rnd);
   x.fillStyle = rg(x, TS * .4, TS * .36, 4, TS / 2, TS / 2, TS * .5, [[0, '#FFFFFF'], [.6, '#EDE5FF'], [1, '#C9B6F7']]); x.fill();
-  x.lineWidth = 5; x.strokeStyle = '#7A5CCC'; x.stroke();
+  x.lineWidth = 9; x.strokeStyle = '#6346B8'; x.stroke();
   // loblu çekirdek (üç yuvarlak parça) ve tanecikler
   x.fillStyle = 'rgba(130,95,210,.45)';
   for (const [cx, cy, r] of [[TS * .3, TS * .64, TS * .13], [TS * .5, TS * .73, TS * .14], [TS * .7, TS * .64, TS * .13]]) { x.beginPath(); x.arc(cx, cy, r, 0, 6.28); x.fill(); }

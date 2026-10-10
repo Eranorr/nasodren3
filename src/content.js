@@ -4,11 +4,10 @@
    aynı çizgide: tanı koymaz, tedavi önermez, ürün ya da marka adı geçmez.
    ========================================================================= */
 export const COLS = 26, ROWS = 35;
-const R = (x, y, w, h) => ({ x, y, w, h });
 
 export const ACTS = ['Tıkanıklık', 'Virüs', 'Direnç'];
 
-/* Sinüs şekilleri: src/assets içindeki görsellerin kenarından çıkarıldı; oran görselle aynı (tek ölçek), tahtaya sığan en büyük
+/* Burun ve sinüs şekilleri: src/assets içindeki görsellerin kenarından çıkarıldı; oran görselle aynı (tek ölçek), tahtaya sığan en büyük
    boyda (tahta 26×35 hücre; yatayda kenardan kenara, dikeyde ostium kanalına en az 3 satır).
    outline: zeminin çizildiği pürüzsüz hat (hücre biriminde x,y çiftleri).
    grid: oyunun çarpışma ızgarası; merkezi hattın içinde kalan hücre '.', dışarısı '#'. '=' ostium kanalı: hattan tahtanın
@@ -16,6 +15,101 @@ export const ACTS = ['Tıkanıklık', 'Virüs', 'Direnç'];
    Bölüm swell: true verirse duvara bitişik iki hücre katmanı şişkin mukoza olarak başlar (kod hesaplar), mukus toplandıkça
    swellAt oranlarında çekilir. Şimdilik hiçbir bölümde açık değil. */
 const SHAPES = {
+  // sağ burun boşluğu (src/assets/sag_burun.png): düz duvar (septum) solda, kanal sol üstte; görseldeki siklamen işareti başlangıç.
+  // Kanal görselde ~1,6 hücre: iç duvarı kavisiyle birlikte 2 hücreye genişletildi (tools/burun-sekli.py)
+  noseSag: {
+    grid: [
+      '#########==###############',
+      '#########...##############',
+      '#########.......##########',
+      '#########........#########',
+      '#########........#########',
+      '#########.........########',
+      '#########.........########',
+      '#########..........#######',
+      '#########..........#######',
+      '#########..........#######',
+      '#########..........#######',
+      '#########...........######',
+      '#########...........######',
+      '#########...........######',
+      '#########...........######',
+      '#########...........######',
+      '#########...........######',
+      '#########...........######',
+      '#########...........######',
+      '#########...........######',
+      '#########............#####',
+      '#########............#####',
+      '#########............#####',
+      '#########............#####',
+      '#########............#####',
+      '#########............#####',
+      '#########...........######',
+      '########............######',
+      '#######.............######',
+      '######.............#######',
+      '######.............#######',
+      '#####............#########',
+      '#####..........###########',
+      '######...#################',
+      '##########################',
+    ],
+    outline: [
+      11.26,-1.5, 9.04,-1.5, 9,6.12, 9.12,20.31, 9,24.57, 8.88,25.76, 8.65,26.68, 8.42,26.91, 8.04,27.03, 7.7,27.53, 7.12,28.1, 6.39,28.68,
+      5.89,29.41, 5.66,29.98, 5.51,30.87, 5.2,31.94, 5.16,32.94, 5.24,33.17, 5.51,33.48, 5.89,33.63, 6.24,34.05, 6.24,34.24, 6.43,34.51, 8.16,34.55,
+      8.16,34.24, 8.23,34.09, 8.58,33.74, 8.85,33.59, 12.61,33.17, 14.68,32.78, 15.95,32.36, 17.21,31.67, 18.13,30.94, 18.94,30.14, 19.71,29.06, 20.05,28.33,
+      20.36,27.45, 20.74,25.49, 20.86,23.38, 20.51,20.12, 20.44,17.86, 20.24,15.17, 20.01,13.56, 19.55,11.1, 18.79,7.96, 18.09,5.69, 17.52,4.43, 16.67,3.12,
+      15.95,2.35, 15.06,1.7, 14.83,1.59, 14.41,1.59, 12.67,2.28, 12.21,2.28, 11.98,2.16, 11.62,1.63, 11.42,0.9, 11.26,-0.52,
+    ],
+  },
+  // sol burun boşluğu (src/assets/sol_burun.png): düz duvar sağda, kanal sağ üstte (görselde ~1,3 hücre, 2 hücreye genişletildi)
+  noseSol: {
+    grid: [
+      '###############==#########',
+      '###############==#########',
+      '###########......#########',
+      '##########.......#########',
+      '#########........#########',
+      '#########........#########',
+      '########.........#########',
+      '########.........#########',
+      '#######..........#########',
+      '#######..........#########',
+      '#######..........#########',
+      '#######..........#########',
+      '######...........#########',
+      '######...........#########',
+      '######...........#########',
+      '######...........#########',
+      '######...........#########',
+      '######...........#########',
+      '#####............#########',
+      '#####............#########',
+      '#####............#########',
+      '#####............#########',
+      '#####............#########',
+      '#####............#########',
+      '#####............#########',
+      '#####............#########',
+      '#####............#########',
+      '#####.............########',
+      '#####..............#######',
+      '######..............######',
+      '######..............######',
+      '#######..............#####',
+      '#########............#####',
+      '############.........#####',
+      '##########################',
+    ],
+    outline: [
+      15,-1.5, 15,-0.52, 14.85,0.97, 14.65,1.75, 14.35,2.22, 14.15,2.34, 13.71,2.34, 13.33,2.18, 12.85,1.87, 12.22,1.63, 11.71,1.63, 10.81,2.22,
+      9.87,3.2, 8.93,4.61, 8.34,5.79, 7.6,7.67, 6.89,9.94, 6.58,11.23, 5.87,15.58, 5.28,18.37, 4.89,20.6, 4.58,23.15, 4.58,24.87, 4.73,26.36,
+      5.09,28.08, 5.44,29.06, 5.91,30, 6.54,30.83, 7.16,31.42, 8.03,32.08, 8.81,32.55, 10.3,33.22, 12.34,33.73, 13.9,33.96, 15.04,34.04, 17.27,34.31,
+      17.71,34.55, 19.59,34.47, 20.49,34.24, 20.76,34, 20.92,33.65, 20.92,32.9, 20.53,31.38, 20.37,30.47, 20.21,30.08, 19.74,29.38, 18.92,28.71, 18.37,28.16,
+      17.98,27.61, 17.59,27.5, 17.35,27.26, 17.2,26.71, 17.04,25.46, 16.92,22.99, 16.88,18.72, 17,9.27, 16.96,-1.5,
+    ],
+  },
   // sağ maksiller (src/assets/maxillary_sag.png): ostium sağ üstte
   maxillarySag: {
     grid: [
@@ -234,28 +328,28 @@ const SHAPES = {
   },
 };
 
+// replicate: virüsün çoğalma aralığı (ms). Akışın geçtiği doku artık korumadığı için 2026-10-10'da ~%35 uzatıldı.
 // immune: mukus toplandığında ya da virüs çoğaldığında bağışıklık hücresi çıkma olasılığı (tahtada virüs varken); alınınca virüsler bir süre çoğalamaz
 export const LEVELS = [
-  { act: 0, name: 'Burun boşluğu', desc: 'Kaydırarak yön ver, mukusları topla, sonra açılan çıkıştan akışı dışarı çıkar.',
-    target: 6, step: 150, obs: [], gold: .35, serum: 0, breeze: 0, obj: [['clean', 17], ['time', 50]] },
-  { act: 0, name: 'Konkalar', desc: 'Konkalar burnun yan duvarlarındaki kıvrımlı raflardır. Aralarından dolaşarak ilerle.',
-    target: 8, step: 138, obs: [R(0,10,8,1), R(18,17,8,1), R(0,25,7,1)], gold: .25, serum: .18, breeze: 0, obj: [['sneeze', 1], ['clean', 21]] },
-  { act: 1, name: 'Sağ maksiller sinüs', desc: 'Sinüslerin en büyüğü; ağzı üst iç duvarda olduğu için akış yukarı tırmanmalı. Virüs mukusa yapışır; virüslü mukusu topla, akış onu dışarı taşır.',
+  // burun boşlukları: akış burun deliğinden (görseldeki siklamen) başlar, üstteki kanaldan çıkar
+  { act: 0, name: 'Sağ burun boşluğu', desc: 'Kaydırarak yön ver, mukusları topla, sonra açılan çıkıştan akışı dışarı çıkar.',
+    target: 6, step: 150, obs: [], shape: SHAPES.noseSag, start: [7, 30], gold: .35, serum: 0, breeze: 0, obj: [['gold', 1], ['time', 50]] },
+  { act: 0, name: 'Sol burun boşluğu', desc: 'Bu kez çıkış sağ üstte. Üç mukusu art arda hızlıca toplarsan hapşırma refleksi akışı bir anlığına hızlandırır.',
+    target: 8, step: 138, obs: [], shape: SHAPES.noseSol, start: [18, 30], gold: .25, serum: .18, breeze: 0, obj: [['sneeze', 1], ['time', 60]] },
+  { act: 1, name: 'Sağ maksiller sinüs', desc: 'Sinüslerin en büyüğü; ağzı üst iç duvarda olduğu için akış yukarı tırmanmalı. Virüs mukusa yapışır; virüslü mukusu topla, sinüs daha çok rahatlar ve akış virüsü dışarı taşır.',
     // ilk şekilli bölüm ve virüsün geldiği bölüm: alan dar olduğu için yavaş ve kısa
     target: 8, step: 150, obs: [], shape: SHAPES.maxillarySag, start: [14, 12], gold: .3, serum: .12, breeze: .14, virus: 2, virusEvery: 3, obj: [['virus', 2], ['gold', 1]] },
-  { act: 1, name: 'Sol maksiller sinüs', desc: 'Bu kez ostium sol üstte. Virüsler temizlenmemiş dokuda çoğalır. Antibiyotik virüse etki etmez; virüsle vücudun kendi savunması savaşır. Bağışıklık hücresini topla, virüsler bir süre çoğalamaz.',
+  { act: 1, name: 'Sol maksiller sinüs', desc: 'Bu kez ostium sol üstte. Virüsler zamanla çoğalır. Antibiyotik virüse etki etmez; virüsle vücudun kendi savunması savaşır. Bağışıklık hücresini topla, virüsler bir süre çoğalamaz.',
     target: 10, step: 126, obs: [], shape: SHAPES.maxillarySol, start: [11, 11], gold: .25, serum: .16, breeze: .14,
-    virus: 2, replicate: 14000, virusMax: 5, immune: .45, obj: [['immune', 1], ['clean', 34]] },
+    virus: 2, replicate: 19000, virusMax: 5, immune: .45, obj: [['immune', 1], ['virus', 2]] },
   // frontal sinüs alından aşağı inen ince bir kanalla boşalır: ostium altta, akış kanaldan aşağı inmeli
   { act: 2, name: 'Sağ frontal sinüs', desc: 'Alındaki sinüs aşağıdaki ince kanaldan boşalır. Tıkaç ileri geri geziniyor; geçtiği anda arkasından dal. Virüsleri çoğalmadan mukusa yakalat.',
     target: 10, step: 120, obs: [], shape: SHAPES.frontalSag, start: [9, 15], movers: [[18, 18, -1]], gold: .25, serum: .2, breeze: .14,
-    virus: 2, replicate: 12000, virusMax: 5, immune: .5, obj: [['noinfect', 0], ['virus', 3]] },
+    virus: 2, replicate: 16000, virusMax: 5, immune: .5, obj: [['noinfect', 0], ['virus', 3]] },
   { act: 2, name: 'Sol frontal sinüs', desc: 'Final. Bekleyen mukus sertleşir, virüsler çoğalır. Bağışıklık hücresini kaçırma, akışı kanaldan sonuna kadar taşı.',
     target: 11, step: 114, obs: [], shape: SHAPES.frontalSol, start: [16, 15], movers: [[7, 18, 1]], harden: 10000, gold: .25, serum: .2, breeze: .2,
-    virus: 3, replicate: 11000, virusMax: 6, immune: .5, obj: [['noinfect', 0], ['nohard', 0]] },
+    virus: 3, replicate: 15000, virusMax: 6, immune: .5, obj: [['noinfect', 0], ['nohard', 0]] },
 ];
-export const ENDLESS = { name: 'Serbest akış', desc: 'Bölüm yok, çıkış yok. Mukus topladıkça akış hızlanır. Virüslü mukusu topla, akış onu kuyruktan dışarı atar. Bağışıklık hücresi virüslerin çoğalmasını bir süre durdurur.',
-  target: Infinity, step: 135, obs: [], gold: .22, serum: .14, breeze: .14, virus: 1, replicate: 13000, virusMax: 6, respawn: 10000, immune: .3 };
 export const DEMO = { name: 'demo', target: Infinity, step: 118, obs: [], gold: 0, serum: 0, breeze: 0 };
 
 // Her bölümü bitirince açılan bilgi kartı (bölüm sırasıyla)
@@ -266,6 +360,24 @@ export const FACTS = [
   ['💊', 'Antibiyotik direnci, bakterilerin antibiyotiklere yanıtının azalması ya da kaybolmasıdır. Direnç geliştiren kişi değil, bakteridir.'],
   ['🌍', 'Gereksiz ve yanlış antibiyotik kullanımı direnç gelişimini hızlandırır. 2021\'de dünyada yaklaşık 4,7 milyon ölüm antibiyotik direnciyle ilişkilendirildi (WHO).'],
   ['🌸', 'Siklamen (Cyclamen europaeum) özütü, burun mukozasında salgı akışını artırarak tıkalı sinüslerin boşalmasına yardımcı olur. Doğal çözümleri eczacınıza ve doktorunuza danışarak seçin.'],
+];
+// Ana menüdeki bilgilendirme: yasasinsaglik.com/antibiyotik-direnci sayfasıyla aynı ifadeler ve kaynaklar.
+// [emoji, başlık, metin, kaynak]
+export const INFO = [
+  ['🦠', 'Sinüzitte antibiyotik', 'Akut rinosinüzit olgularının %90-98’i viraldir; bu olgularda antibiyotik büyük olasılıkla işe yaramaz. Akıntının rengi tek başına bakteriyel enfeksiyon olduğunu göstermez.', 'CDC, 2024; Dereköy ve Güçlü, 2016'],
+  ['💊', 'Antibiyotik direnci nedir?', 'Bakterilerin antibiyotiklere verdiği yanıtın azalması ya da kaybolmasıdır. Direnç geliştiren kişi değil, bakteridir. Gereksiz ve yanlış antibiyotik kullanımı bu süreci hızlandırır.', 'WHO'],
+  ['🌍', 'Sayılarla direnç', '2021’de dünyada 4,7 milyondan fazla ölüm antibiyotik direnciyle ilişkilendirildi. 2018-2023 arasında izlenen bakteri-antibiyotik eşleşmelerinin %40’ında direnç arttı.', 'WHO, 2025; GBD AMR, Lancet 2024'],
+  ['✅', 'Doğru kullanım', 'Grip ve nezlede antibiyotik işe yaramaz. Antibiyotik yalnızca reçeteyle, önerilen süre ve dozda kullanılır. El hijyeni ve aşılama enfeksiyonları önlemeye yardımcı olur.', 'ECDC'],
+  ['🩺', 'Ne zaman hekime?', 'Şikâyetler uzar ve düzelmezse, yüksek ateş ya da yüz ağrısı olursa, iyileşir gibi olup yeniden kötüleşirseniz hekiminize başvurun.', ''],
+];
+// Bilgilendirmenin "Nasıl oynanır" bölümü
+export const HOWTO = [
+  'Kaydırarak yön ver; masaüstünde ok tuşları ya da WASD.',
+  'Mukusları topla, tıkanıklık azalsın. Hedefe ulaşınca ostium açılır; akışı parlayan çıkıştan dışarı çıkar.',
+  'Duvara, engellere ve kendi kuyruğuna çarpma. Akış takılırsa oyun biter ve skorun adınla skor tablosuna yazılır.',
+  'Amaç 1. bölümden son bölüme hiç takılmadan ulaşmak. Skor bölümler boyunca birikir.',
+  'Virüsler mukusa yapışır. Virüslü mukusu topla, akış onu dışarı taşır. Antibiyotik değil, vücudun kendi temizliği.',
+  'Her bölümde üç yıldız var. Bölümü bitirince bir bilgi kartı açılır; hepsi Koleksiyon’da.',
 ];
 // Son bölümün sonunda ve ara sıra ipucu olarak: oyun antibiyotiğe karşıymış gibi okunmasın
 export const CLOSING = 'Antibiyotik gerektiğinde hayat kurtarır. Ne zaman gerektiğine hekim karar verir; reçetesiz kullanmayın, eczacınıza ve doktorunuza danışın.';
@@ -279,8 +391,8 @@ export const TIPS = [
   'Tıkaçlar sadece yatay gider. Geçtikleri anda arkalarından dal.',
   'Titreyen mukus birazdan sertleşecek. Önce onu topla.',
   'Parmağını kaldırmadan kaydırmaya devam edersen art arda dönüş yapabilirsin.',
-  'Virüsler mukusa yapışır. Virüslü mukusu toplayıp çıkışa taşırsan bonus alırsın.',
-  'Temizlediğin dokuda virüsler çoğalamaz. Şişip titreyen virüs çoğalmak üzere.',
+  'Virüsler mukusa yapışır. Virüslü mukus tıkanıklığı iki kat azaltır; çıkışa taşırsan bonus da alırsın.',
+  'Mukus virüsleri yakalar, akış onları dışarı taşır. Vücudun kendi temizliği böyle çalışır.',
   'Virüse kafa atma, akış kısalır. Onları mukusa yönlendir.',
   'Bağışıklık hücresini aldığında virüsler bir süre çoğalamaz. Titreyen bir virüs gördüysen onu kap.',
   CLOSING,
@@ -300,14 +412,12 @@ export const BADGES = [
   ['sneeze5', '🤧', 'Hapşırma ustası',  'Tek oyunda 5 hapşırma refleksi'],
   ['gold10',  '🌼', 'Altın toplayıcı',  'Toplam 10 altın siklamen'],
   ['len40',   '〰️', 'Uzun akış',        'Akışı 40 uzunluğa ulaştır'],
-  ['clean60', '✨', 'Tertemiz',         'Bir bölümde alanın %60\'ı'],
   ['serum5',  '🧊', 'Sakin akış',       'Toplam 5 serum fizyolojik'],
   ['perfect', '🏅', 'Kusursuz',         'Bir bölümde üç yıldız'],
   ['immune10', '🛡️', 'Savunma hattı',   'Toplam 10 bağışıklık hücresi topla'],
   ['all',     '🗺️', 'Tüm sinüsler',     'Altı bölümü de bitir'],
   ['stars10', '⭐', 'Yıldız avcısı',    '10 yıldız topla'],
   ['starsAll','👑', 'Siklamen uzmanı',  '18 yıldızın hepsi'],
-  ['endless', '🏃', 'Maraton',          'Serbest akışta 1000 puan'],
   ['virus20', '🦠', 'Kapı dışarı',      'Toplam 20 virüsü dışarı taşı'],
 ];
 export const ITEM_INFO = {
@@ -320,12 +430,12 @@ export const ITEM_INFO = {
   plug:   ['Tıkaç', 'İleri geri gider'],
   crust:  ['Sert mukus', 'Bekleyen mukus sertleşir'],
   virus:  ['Virüs', 'Çarpma, mukusa yapışmasını bekle'],
-  infected: ['Virüslü mukus', 'Topla, çıkışa taşı: bonus'],
+  infected: ['Virüslü mukus', 'Topla: tıkanıklık iki kat azalır, çıkışa taşı'],
   immune: ['Bağışıklık hücresi', 'Vücudun savunması: virüsler bir süre çoğalamaz'],
   swell:  ['Şişlik', 'Mukus topladıkça çekilir, sinüs genişler'],
 };
 export const GOAL_TEXT = {
-  clean: v => `Temiz alan en az %${v}`, time: v => `${v} saniyenin altında bitir`, sneeze: v => `${v} hapşırma refleksi yap`,
+  time: v => `${v} saniyenin altında bitir`, sneeze: v => `${v} hapşırma refleksi yap`,
   gold: v => `${v} altın siklamen topla`, len: v => `Akışı ${v} uzunluğa ulaştır`, nohard: () => 'Hiçbir mukus sertleşmesin',
   virus: v => `${v} virüsü dışarı taşı`, noinfect: () => 'Hiçbir virüs çoğalmasın', immune: v => `${v} bağışıklık hücresi topla`,
 };

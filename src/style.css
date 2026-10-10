@@ -37,7 +37,7 @@ img{max-width:100%}
 .chip i b{display:block;height:100%;background:var(--flow);transform-origin:left}
 .icon{appearance:none;border:0;background:var(--card);color:var(--ink);width:38px;height:38px;border-radius:14px;display:grid;place-items:center;cursor:pointer;box-shadow:0 2px 0 var(--line);flex:none}
 .icon svg{width:18px;height:18px}
-.icon:focus-visible,.btn:focus-visible,.node:focus-visible,.tab:focus-visible,.skin:focus-visible,.link:focus-visible{outline:3px solid var(--flow);outline-offset:2px}
+.icon:focus-visible,.btn:focus-visible,.tab:focus-visible,.skin:focus-visible,.link:focus-visible{outline:3px solid var(--flow);outline-offset:2px}
 
 #stage{position:relative;flex:1;min-height:0;touch-action:none}
 #stage canvas{display:block;position:absolute;inset:0;width:100%;height:100%}
@@ -88,20 +88,6 @@ img{max-width:100%}
 .sheet{align-self:center;width:100%;max-width:440px;background:var(--card);border-radius:28px;padding:18px;box-shadow:0 6px 0 var(--line),0 20px 50px rgba(58,21,48,.12)}
 .homestats{display:flex;justify-content:center;gap:18px;font-size:14px;color:var(--ink2);font-weight:700;margin:12px 0 0}
 .homestats b{color:var(--ink)}
-
-/* Harita */
-#map{position:relative;margin:4px 0 0}
-#map svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-.node{position:absolute;transform:translate(-50%,-30px);display:flex;flex-direction:column;align-items:center;gap:0;appearance:none;background:none;border:0;padding:0;cursor:pointer;font-family:var(--font);color:var(--ink);width:130px}
-.node .disc{width:60px;height:60px;border-radius:50%;display:grid;place-items:center;font-size:24px;font-weight:800;background:var(--cyc);color:#fff;box-shadow:0 5px 0 var(--cycd)}
-.node.done .disc{background:var(--flow);box-shadow:0 5px 0 var(--flowd)}
-.node.lock{cursor:default}
-.node.lock .disc{background:#EFE3E8;color:#B79AA8;box-shadow:0 5px 0 #DCC8D1}
-.node.next .disc{animation:bob 1.6s ease-in-out infinite}
-@keyframes bob{50%{transform:translateY(-5px)}}
-.node .nm{margin-top:8px;font-weight:700;font-size:14px;line-height:1.1;text-align:center;background:rgba(255,255,255,.95);padding:0 6px;border-radius:8px}
-.stars{color:#E7D6DD;font-size:16px;letter-spacing:1px;line-height:1}
-.stars .on{color:var(--gold)}
 
 /* Bölüm giriş */
 .legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:4px 0 14px}
@@ -154,10 +140,7 @@ img{max-width:100%}
 .facts .fact{margin:0}
 .facts .fact.lock{background:#F5EFF2}
 .facts .fact.lock p{color:#A58B98}
-@media (prefers-reduced-motion: reduce){.node.next .disc,#hint .hand{animation:none}.bigstars.go span{animation-duration:.01s}}
-/* Harita perde başlıkları */
-.act{position:absolute;left:0;right:0;text-align:center;font-weight:800;font-size:18px;color:var(--cycd);line-height:1.1;pointer-events:none}
-.act span{display:block;font-size:12px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em}
+@media (prefers-reduced-motion: reduce){#hint .hand{animation:none}.bigstars.go span{animation-duration:.01s}}
 /* Son bölüm kapanış notu */
 .tip.close{background:#E6F7F3}
 .tip.close b{color:var(--flowd)}
@@ -213,3 +196,45 @@ img{max-width:100%}
 }
 #toast.low{top:auto;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translate(-50%,160%)}
 #toast.low.on{transform:translate(-50%,0)}
+
+/* İsim ve skor tablosu */
+.namescore{display:flex;flex-direction:column;align-items:center;background:#FBF4F7;border-radius:18px;padding:10px;margin:6px 0 14px}
+.namescore b{font-size:clamp(34px,10vw,44px);line-height:1;font-weight:800;color:var(--cyc);font-variant-numeric:tabular-nums}
+.namescore span{font-size:13px;font-weight:700;color:var(--ink2)}
+.namefield{display:flex;flex-direction:column;gap:6px;font-weight:700;font-size:15px}
+.namefield input{appearance:none;width:100%;font:700 20px/1.2 var(--font);color:var(--ink);background:#fff;border:2px solid var(--line);border-radius:16px;padding:12px 14px 10px;
+  user-select:text;-webkit-user-select:text;box-shadow:inset 0 2px 0 #FBF4F7}
+.namefield input::placeholder{color:#C9A9B7}
+.namefield input:focus{outline:none;border-color:var(--flow)}
+.btn:disabled{background:#EFE3E8;color:#B79AA8;box-shadow:0 5px 0 #DCC8D1;cursor:default;transform:none}
+.head.wrap{flex-wrap:wrap}   /* skor tablosu: sekmeler başlıkla birlikte sabit, liste altında kayar */
+.head.wrap .tabs{flex:1 1 100%;margin:4px 0 2px}
+.board{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.board li{display:flex;align-items:center;gap:10px;background:#FBF4F7;border-radius:14px;padding:8px 12px 6px;min-width:0}
+.board .rk{width:26px;flex:none;text-align:center;font-weight:800;color:var(--ink2);font-variant-numeric:tabular-nums}
+.board li:nth-child(1) .rk{color:#D29A12}
+.board .nm{flex:1;min-width:0}
+.board .nm b{display:block;font-size:16px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board .sc{font-weight:800;font-size:18px;font-variant-numeric:tabular-nums}
+.board li.me{background:#FDEAF3;box-shadow:inset 0 0 0 2px var(--cyc)}
+.board .empty{justify-content:center;color:var(--ink2);font-weight:600;padding:16px 12px}
+/* Bilgilendirme */
+.fact .src{display:block;font-size:12px;color:var(--ink2);margin-top:4px;font-weight:600}
+.steps{margin:0 0 14px;padding:0 0 0 22px;display:flex;flex-direction:column;gap:8px;font-size:15px;font-weight:600;line-height:1.35}
+.steps li::marker{color:var(--cyc);font-weight:800}
+/* Ayarlar */
+.settings{display:flex;flex-direction:column;gap:10px}
+.setting{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#FBF4F7;border-radius:16px;padding:12px 14px}
+.setting b{display:block;font-size:16px;line-height:1.15}
+.setting span span,.setting.col>span:last-child:not(.row2){display:block;font-size:12.5px;color:var(--ink2);line-height:1.25;font-weight:600}
+.setting.col{flex-direction:column;align-items:stretch;gap:8px}
+.setting .row2{display:flex;justify-content:space-between;align-items:baseline}
+.setting output{font-weight:800;font-variant-numeric:tabular-nums;color:var(--cyc)}
+.setting input[type=range]{width:100%;margin:0;accent-color:var(--cyc);height:28px;cursor:pointer}
+.setting.off b,.setting.off output{color:#B79AA8}
+.setting.off input{cursor:default}
+.switch{appearance:none;border:0;flex:none;width:54px;height:32px;border-radius:32px;background:#E6D3DB;position:relative;cursor:pointer;transition:background .2s}
+.switch i{position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(58,21,48,.25);transition:transform .2s}
+.switch[aria-checked="true"]{background:var(--flow)}
+.switch[aria-checked="true"] i{transform:translateX(22px)}
+.switch:focus-visible,.setting input:focus-visible{outline:3px solid var(--flow);outline-offset:2px}
