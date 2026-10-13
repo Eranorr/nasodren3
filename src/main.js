@@ -3,7 +3,7 @@ import { COLS, ROWS, ACTS, LEVELS, DEMO, FACTS, INFO, HOWTO, CLOSING, TIPS, SKIN
 import { prog, save, totalStars, addScore, cleanName } from './save.js';
 import { initAudio, playSfx, setVolumes, musicScene, musicDuck, audioHidden } from './audio.js';
 import { createMusic } from './music.js';
-import { TS, cnv, seeded, C, HALO, halo } from './textures.js';
+import { TS, cnv, seeded, C, HALO, halo, HEAD_Y } from './textures.js';
 
 // Mobilde konsol: adrese ?eruda ekle (yalnızca geliştirme modunda)
 if (import.meta.env.DEV && /eruda/.test(location.search + location.hash)) import('eruda').then(m => m.default.init());
@@ -42,7 +42,7 @@ stageEl.prepend(app.canvas);
 app.ticker.maxFPS = 0;
 
 const T = {};
-for (const k of ['ball', 'face', 'soft', 'dot', 'septum', 'crust', 'plug', 'portal', 'petal', 'petals', 'eye', 'face2', 'leaf', 'tuber', 'bubble', 'bloom', 'swell']) T[k] = PIXI.Texture.from(C[k]);
+for (const k of ['ball', 'face', 'soft', 'dot', 'septum', 'crust', 'plug', 'portal', 'petal', 'petals', 'eye', 'anther', 'face2', 'leaf', 'budStem', 'bud', 'tuber', 'bubble', 'bloom', 'swell']) T[k] = PIXI.Texture.from(C[k]);
 // tahtadaki öğeler haleli: toplanabilirler açık bir ışıkla, virüs koyu bir gölgeyle zeminden ayrılır
 const HALO_RGB = { mucus: '255,250,214', infected: '236,220,255', gold: '255,236,160', serum: '226,244,255', breeze: '222,250,232', immune: '240,234,255' };
 for (const k of ['gold', 'serum', 'breeze', 'immune']) T[k] = PIXI.Texture.from(halo(C[k], HALO_RGB[k], .85));
@@ -82,13 +82,18 @@ gateGlow.anchor.set(.5); gateRing.anchor.set(.5); gateGlow.tint = 0x2FD6BE; gate
 gateLayer.addChild(gateGlow, gateRing); gateLayer.visible = false;
 
 const leafLayer = new PIXI.Container(), bodyLayer = new PIXI.Container(), lumpLayer = new PIXI.Container();   // lump: gövdede taşınan virüsler
-const bodyPool = [], leafPool = [], lumpPool = [];
-function bodySprite(i) { let s = bodyPool[i]; if (!s) { s = new PIXI.Sprite(T.ball); s.anchor.set(.5); bodyLayer.addChild(s); bodyPool[i] = s; } return s; }
+const stemLineLayer = new PIXI.Container(), stemHiLayer = new PIXI.Container();   // sıklamen sapının konturu ve parlak şeridi (gövdenin altında / üstünde)
+const bodyPool = [], leafPool = [], lumpPool = [], stemLinePool = [], stemHiPool = [], budPool = [];
+const pooled = (pool, layer, tex) => i => { let s = pool[i]; if (!s) { s = new PIXI.Sprite(tex); s.anchor.set(.5); layer.addChild(s); pool[i] = s; } return s; };
+const bodySprite = pooled(bodyPool, bodyLayer, T.ball), stemLineSprite = pooled(stemLinePool, stemLineLayer, T.dot), stemHiSprite = pooled(stemHiPool, stemHiLayer, T.dot);
 function leafSprite(i) { let s = leafPool[i]; if (!s) { s = new PIXI.Sprite(T.leaf); s.anchor.set(.5, .97); leafLayer.addChild(s); leafPool[i] = s; } return s; }
-const tuber = new PIXI.Sprite(T.tuber), headPetals = new PIXI.Sprite(T.petals), headEye = new PIXI.Sprite(T.eye);
+// tomurcuk: sap (tint edilmez) + kapalı çiçek (taç yaprak rengi) aynı dönüşümle
+function budSprite(i) { let b = budPool[i]; if (!b) { b = new PIXI.Container(); b.stem = new PIXI.Sprite(T.budStem); b.head = new PIXI.Sprite(T.bud); for (const s of [b.stem, b.head]) { s.anchor.set(.5, .97); b.addChild(s); } leafLayer.addChild(b); budPool[i] = b; } return b; }
+const tuber = new PIXI.Sprite(T.tuber), headPetals = new PIXI.Sprite(T.petals), headEye = new PIXI.Sprite(T.eye), headAnther = new PIXI.Sprite(T.anther);
 const headBase = new PIXI.Sprite(T.ball), headFace = new PIXI.Sprite(T.face2);
-for (const s of [tuber, headPetals, headEye, headBase, headFace]) s.anchor.set(.5);
-snakeLayer.addChild(leafLayer, bodyLayer, tuber, lumpLayer, headPetals, headEye, headBase, headFace);
+for (const s of [tuber, headBase, headFace]) s.anchor.set(.5);
+for (const s of [headPetals, headEye, headAnther]) s.anchor.set(.5, HEAD_Y / TS);   // çiçeğin merkezi dokunun üst kısmında, yapraklar arkaya uzanır
+snakeLayer.addChild(leafLayer, stemLineLayer, bodyLayer, stemHiLayer, tuber, lumpLayer, headPetals, headEye, headAnther, headBase, headFace);
 
 const BLOOMS = [];
 for (let i = 0; i < 40; i++) { const s = new PIXI.Sprite(T.bloom); s.anchor.set(.5); s.visible = false; bloomLayer.addChild(s); BLOOMS.push({ s, life: 0 }); }
@@ -987,7 +992,7 @@ function rgb(c) { return [(c >> 16) & 255, (c >> 8) & 255, c & 255]; }
 function mixc(a, b, t) { return ((a[0] + (b[0] - a[0]) * t) << 16) | ((a[1] + (b[1] - a[1]) * t) << 8) | (a[2] + (b[2] - a[2]) * t); }
 function hsl(h) { const f = n => { const k = (n + h * 12) % 12; return Math.round(255 * (.62 - .38 * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); }; return (f(0) << 16) | (f(8) << 8) | f(4); }
 const WHITE = [255, 255, 255], BOOSTC = rgb(0xF06AAE);
-const STEM = rgb(0x4BA85E), STEM_HI = rgb(0x9EDC8C), WILT = rgb(0x9C8F96);
+const STEM = rgb(0x4BA85E), STEM_HI = rgb(0x9EDC8C), STEM_LINE = 0x1F5E33, WILT = rgb(0x9C8F96);
 let skin = SKINS[0], skinBody = WHITE;
 let headRot = 0, headPulse = 0;
 
@@ -997,22 +1002,33 @@ function renderSnake(alpha, dt, now) {
     if (Math.abs(fx - bx[i]) + Math.abs(fy - by[i]) > 1.5) { fx = bx[i]; fy = by[i]; }   // ani konum değişimi (ör. virüs çarpınca kısalma): sıçra
     ix[i] = fx + (bx[i] - fx) * alpha; iy[i] = fy + (by[i] - fy) * alpha;
   }
-  const count = len * 2 - 1, boosting = gameTime < boostUntil, hurt = gameTime < hurtUntil;
+  const boosting = gameTime < boostUntil, hurt = gameTime < hurtUntil;
   const flower = !skin.classic, rainbow = skin.petal === -1;
+  // segment arası ara noktalar: sap düz bir çizgi gibi görünsün diye sıklamende hücre başına 4, klasikte 2 top
+  const SUB = flower ? 4 : 2, n = (len - 1) * SUB, line = boosting ? 0x9C2E66 : hurt ? mixc(rgb(STEM_LINE), WILT, .5) : STEM_LINE;
   let used = 0;
-  for (let k = count - 1; k >= 1; k--) {
-    const i = k >> 1; let x, y;
-    if (k & 1) {
+  for (let k = n; k >= 1; k--) {
+    const i = Math.floor(k / SUB), f = k / SUB - i; let x = ix[i], y = iy[i];
+    if (f > 0) {
       if (Math.abs(ix[i] - ix[i + 1]) + Math.abs(iy[i] - iy[i + 1]) > 1.5) continue;
-      x = (ix[i] + ix[i + 1]) * .5; y = (iy[i] + iy[i + 1]) * .5;
-    } else { x = ix[i]; y = iy[i]; }
-    const t = k / count, s = bodySprite(used++);
-    s.visible = true; s.position.set((x + .5) * cell, (y + .5) * cell);
-    s.width = s.height = cell * (flower ? .7 - .26 * t : .9 - .36 * t);
-    const w = .5 + .5 * Math.sin(now * .008 - k * .45);
-    s.tint = boosting ? mixc(BOOSTC, WHITE, w * .4) : flower ? mixc(STEM, STEM_HI, w * .45) : mixc(skinBody, WHITE, w * .22);
+      x += (ix[i + 1] - x) * f; y += (iy[i + 1] - y) * f;
+    }
+    const t = k / (n + 1), s = bodySprite(used), X = (x + .5) * cell, Y = (y + .5) * cell;
+    const sz = cell * (flower ? .6 - .24 * t : .9 - .36 * t), w = .5 + .5 * Math.sin(now * .008 - k * .9 / SUB);
+    s.visible = true; s.position.set(X, Y); s.width = s.height = sz; s.rotation = 0; s.texture = flower ? T.dot : T.ball;
+    s.tint = boosting ? mixc(BOOSTC, WHITE, w * .4) : flower ? mixc(STEM, STEM_HI, w * .3) : mixc(skinBody, WHITE, w * .22);
+    if (flower) {
+      // toplar sapın yönünde biraz uzatılır: kenar tırtıksız, parlak şerit kesintisiz görünür
+      const o = stemLineSprite(used), h = stemHiSprite(used);
+      const a = i < len - 1 ? Math.atan2(iy[i] - iy[i + 1], ix[i] - ix[i + 1]) : Math.atan2(iy[i - 1] - iy[i], ix[i - 1] - ix[i]);
+      s.rotation = a; s.width = sz + cell * .2;
+      o.visible = h.visible = true; o.position.set(X, Y); o.rotation = a; o.width = sz + cell * .34; o.height = sz + cell * .14; o.tint = line;
+      h.position.set(X - sz * .1, Y - sz * .1); h.rotation = a; h.width = cell * .55; h.height = sz * .36; h.tint = boosting ? 0xFFE3F1 : mixc(STEM_HI, WHITE, w * .35);
+    }
+    used++;
   }
   for (let j = used; j < bodyPool.length; j++) bodyPool[j].visible = false;
+  for (let j = flower ? used : 0; j < stemLinePool.length; j++) stemLinePool[j].visible = stemHiPool[j].visible = false;
   // her 3 segmentte bir, sırayla sağa sola açılan yaprak
   let nl = 0;
   if (flower) for (let i = 3; i < len - 1; i += 3) {
@@ -1024,6 +1040,19 @@ function renderSnake(alpha, dt, now) {
     s.width = sz * .85; s.height = sz; s.tint = hurt ? mixc(WHITE, WILT, .5) : 0xffffff;
   }
   for (let j = nl; j < leafPool.length; j++) leafPool[j].visible = false;
+  // her 9 segmentte bir, sarkık tomurcuk; komşu yaprağın karşı tarafında
+  let nb = 0;
+  const budC = rainbow ? hsl((now * .0003 + .3) % 1) : skin.petal;
+  if (flower) for (let i = 5; i < len - 1; i += 9) {
+    const tx = ix[i - 1] - ix[i + 1], ty = iy[i - 1] - iy[i + 1];
+    if (Math.abs(tx) + Math.abs(ty) > 3) continue;
+    const b = budSprite(nb++), side = ((i + 1) / 3) & 1 ? -1 : 1, sz = cell * (1.6 - .4 * i / len);
+    b.visible = true; b.position.set((ix[i] + .5) * cell, (iy[i] + .5) * cell);
+    b.rotation = Math.atan2(ty, tx) + side * (Math.PI / 2 + .35) + Math.PI / 2 + Math.sin(now * .003 + i) * .1;
+    b.scale.set(side * sz / TS, sz / TS);
+    b.stem.tint = hurt ? mixc(WHITE, WILT, .5) : 0xffffff; b.head.tint = hurt ? mixc(rgb(budC), WILT, .55) : budC;
+  }
+  for (let j = nb; j < budPool.length; j++) budPool[j].visible = false;
   tuber.visible = flower;
   if (flower) {
     const e = len - 1;
@@ -1042,7 +1071,7 @@ function renderSnake(alpha, dt, now) {
   snakeLayer.alpha = hurt ? (Math.sin(now * .04) > 0 ? 1 : .45) : 1;
   const hx = (ix[0] + .5) * cell, hy = (iy[0] + .5) * cell;
   const lx = DX[moveDir] * cell * .1, ly = DY[moveDir] * cell * .08;
-  headPetals.visible = headEye.visible = flower;
+  headPetals.visible = headEye.visible = headAnther.visible = flower;
   headPulse = Math.max(0, headPulse - dt * .004);
   if (flower) {
     // taç yapraklar boyundan başa giden yönün tersine savrulur
@@ -1052,9 +1081,9 @@ function renderSnake(alpha, dt, now) {
     headRot += d * Math.min(1, dt * .025);
     const open = (boosting ? 1.16 : 1) * (hurt ? .84 : 1) * (1 + headPulse * .1), fl = Math.sin(now * .018) * .045;
     const petalC = rainbow ? hsl((now * .0003) % 1) : skin.petal;
-    for (const s of [headPetals, headEye]) {
+    for (const s of [headPetals, headEye, headAnther]) {
       s.position.set(hx, hy); s.rotation = headRot;
-      s.width = cell * 3.1 * open * (1 + fl); s.height = cell * 3.1 * open * (1 - fl * .6);
+      s.width = cell * 2.8 * open * (1 + fl); s.height = cell * 2.8 * open * (1 - fl * .6);
     }
     headPetals.tint = hurt ? mixc(rgb(petalC), WILT, .55) : petalC; headEye.tint = skin.eye;
     headBase.tint = skin.disc; headBase.width = headBase.height = cell * 1.0;
@@ -1263,7 +1292,7 @@ function openIntro(i, base = 0) {
   const L = LEVELS[i];
   $('inKicker').textContent = `${L.act + 1}. perde: ${ACTS[L.act]} · Bölüm ${i + 1}/${LEVELS.length}`;
   $('tIntro').textContent = L.name;
-  $('inDesc').textContent = L.desc + (i === 0 ? ' Masaüstünde ok tuşları ya da WASD kullanabilirsin. Akış takılırsa oyun biter: altı bölümü tek seferde geçmeye çalış.' : '');
+  $('inDesc').textContent = L.desc + (i === 0 ? ' Masaüstünde ok tuşları ya da WASD kullanabilirsin. Akış takılırsa oyun biter: bütün bölümleri tek seferde geçmeye çalış.' : '');
   const legend = legendFor(L, LEVELS.slice(0, i));
   $('inLegend').innerHTML = legend; $('inNew').style.display = legend ? '' : 'none';
   $('inGoalsWrap').style.display = '';
@@ -1338,9 +1367,11 @@ function skinPreview(i) {
   else {
     let pf = hex(s.petal);
     if (s.petal === -1) pf = g => { const lg = g.createLinearGradient(0, 0, TS, TS); ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#c77dff'].forEach((col, k) => lg.addColorStop(k / 4, col)); return lg; };
-    x.save(); x.translate(TS * .4, TS * .4); x.rotate(-.75); x.scale(1.25, 1.25); x.translate(-TS / 2, -TS / 2);
-    x.drawImage(tinted(C.petals, pf), 0, 0); x.drawImage(tinted(C.eye, hex(s.eye)), 0, 0); x.restore();
-    const d = TS * .46, o = TS * .4 - d / 2;
+    // baş sol üstte, taç yaprakları sağ alta savrulur; oranlar oyundakiyle aynı (disk = baş dokusunun 1/2,8'i)
+    const k = 1.05, hc = TS * .32;
+    x.save(); x.translate(hc, hc); x.rotate(-Math.PI / 4); x.scale(k, k); x.translate(-TS / 2, -HEAD_Y);
+    x.drawImage(tinted(C.petals, pf), 0, 0); x.drawImage(tinted(C.eye, hex(s.eye)), 0, 0); x.drawImage(C.anther, 0, 0); x.restore();
+    const d = TS * k / 2.8, o = hc - d / 2;
     x.drawImage(tinted(C.ball, hex(s.disc)), o, o, d, d); x.drawImage(C.face2, o, o, d, d);
   }
   return previewCache[i] = c.toDataURL();
@@ -1447,6 +1478,7 @@ if (DEBUG) window.__ns = {
   head: () => [bx[0], by[0]], body: () => Array.from({ length: len }, (_, i) => [bx[i], by[i]]), obs: (x, y) => obstacle[y * COLS + x],
   mover: (x, y) => !!moverAt(x, y), exit: () => exits, setDir: d => { dir = d; queue.length = 0; }, dir: () => dir,
   carried: () => carriedAt.length, lv: () => lv, spawn, callout, die,
+  snakeBox: () => { const r = snakeLayer.getBounds(); return [r.x, r.y, r.width, r.height]; },
   // bölümü bot oynar
   play(i) { openIntro(i); begin(); autoBot = true; }, intro: openIntro,
   run(maxMs = 300000) {

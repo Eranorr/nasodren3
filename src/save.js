@@ -13,6 +13,8 @@ export const prog = Object.assign({ mask: Array(N).fill(0), done: Array(N).fill(
   badges: {}, skin: 0, golds: 0, serums: 0, immunes: 0, viruses: 0, best: 0, seenTut: false, muted: false,
   sfxVol: .8, musicVol: .6, vibrate: true,   // ayarlar
   scores: { adventure: [] } }, store.get(KEY, {}));
+// 6 bölümlük eski kayıt: etmoid bölümleri (5-6.) maksillerden sonra araya girdi, frontallerin yıldızları kaymasın
+for (const [k, v] of [['mask', 0], ['done', false], ['facts', false]]) if (prog[k].length === 6 && N === 8) prog[k].splice(4, 0, v, v);
 export const save = () => store.set(KEY, prog);
 export const bits = m => (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1);
 export const totalStars = () => prog.mask.reduce((a, m) => a + bits(m), 0);

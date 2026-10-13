@@ -145,31 +145,60 @@ C.infected = C.mucus.map(m => { const [c, x] = cnv();
   x.globalCompositeOperation = 'source-over'; x.drawImage(C.virus, TS * .5, -TS * .02, TS * .52, TS * .52);
   return c; });
 
-/* Sıklamen yılan: baş = geriye kıvrık taç yapraklı çiçek (ileri = dokunun üstü), gövde = sap + yaprak, kuyruk = yumru */
-const PETAL_ANG = [-.78, -.39, 0, .39, .78];        // taç yapraklar geriye doğru yelpaze
-function petalPath(x, w, y0, y1) {                    // yerel +y yönünde, hafif burgulu taç yaprak
+/* Sıklamen yılan: baş = sarkık sıklamen çiçeği; ağzı (yüz) önde, taç yaprakları geriye kıvrılıp alev gibi savrulur.
+   Baş dokularında ileri = dokunun üstü; çiçeğin merkezi (HEAD_Y) üst tarafta, yapraklar arkaya uzanır. Gövde = sap + yaprak + tomurcuk, kuyruk = yumru */
+export const HEAD_Y = 34;
+// açı, boy, en, uç kıvrımı (eksi: uç arkaya, gövde eksenine doğru kıvrılır)
+const PETALS = [[-1.1, 62, 17, 14], [-.55, 72, 17, 7], [0, 78, 16, 0], [.55, 72, 17, -7], [1.1, 62, 17, -14]];
+function petalPath(x, w, y0, y1, b) {                 // yerel +y yönünde, ortası dolgun, ucu sivri; b: ucun yana kıvrılması
   const L = y1 - y0;
-  x.beginPath(); x.moveTo(0, y0);
-  x.bezierCurveTo(w * 1.15, y0 + L * .2, w * 1.05, y0 + L * .72, w * .3, y1 - 1);
-  x.quadraticCurveTo(0, y1 + 3, -w * .35, y1 - 3);
-  x.bezierCurveTo(-w * .95, y0 + L * .75, -w * .9, y0 + L * .2, 0, y0);
+  x.beginPath(); x.moveTo(-w * .25, y0);
+  x.bezierCurveTo(w * 1.15, y0 + L * .1, w * 1.05 + b * .45, y0 + L * .62, b + w * .2, y1 - 3);
+  x.quadraticCurveTo(b + w * .05, y1 + 2, b - w * .22, y1 - 4);
+  x.bezierCurveTo(-w * 1.0 + b * .45, y0 + L * .66, -w * 1.1, y0 + L * .1, w * .25, y0);
+  x.closePath();
 }
-// gri tonlu: görünüm rengiyle tint edilir, dipler koyu kalır
+// gri tonlu: görünüm rengiyle tint edilir; koyu gri kontur tintle taç yaprağın koyu tonuna döner
 C.petals = (() => { const [c, x] = cnv();
   for (const k of [0, 4, 1, 3, 2]) {
-    x.save(); x.translate(TS / 2, TS / 2); x.rotate(-PETAL_ANG[k]);
-    petalPath(x, 19, 6, 59);
-    const g = x.createLinearGradient(0, 8, 0, 58); g.addColorStop(0, '#bdbdbd'); g.addColorStop(.45, '#efefef'); g.addColorStop(1, '#ffffff');
-    x.fillStyle = g; x.fill(); x.lineWidth = 2; x.strokeStyle = 'rgba(0,0,0,.2)'; x.stroke();
-    x.strokeStyle = 'rgba(0,0,0,.09)'; x.lineWidth = 2; x.beginPath(); x.moveTo(0, 30); x.quadraticCurveTo(3, 44, 1, 55); x.stroke();
+    const [a, l, w, b] = PETALS[k], y0 = 10, y1 = y0 + l;
+    x.save(); x.translate(TS / 2, HEAD_Y); x.rotate(-a);
+    petalPath(x, w, y0, y1, b);
+    const g = x.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, '#c4c4c4'); g.addColorStop(.35, '#f0f0f0'); g.addColorStop(1, '#ffffff');
+    x.fillStyle = g; x.fill();
+    // burgu: yaprağın bir yarısı gölgede, gölge ucuna doğru öbür yana geçer
+    x.save(); x.clip();
+    x.beginPath(); x.moveTo(0, y0); x.bezierCurveTo(w * .55, y0 + l * .35, -w * .55 + b * .3, y0 + l * .65, b, y1 + 4);
+    x.lineTo(b - w * 2, y1 + 4); x.lineTo(-w * 2, y0); x.closePath();
+    x.fillStyle = 'rgba(0,0,0,.14)'; x.fill();
+    x.strokeStyle = 'rgba(255,255,255,.8)'; x.lineWidth = 3; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(w * .4, y0 + l * .3); x.quadraticCurveTo(w * .45 + b * .35, y0 + l * .6, b + w * .15, y0 + l * .86); x.stroke();
+    x.restore();
+    petalPath(x, w, y0, y1, b); x.lineWidth = 3.5; x.lineJoin = 'round'; x.strokeStyle = '#646464'; x.stroke();
     x.restore();
   }
   return c; })();
-// sıklamene özgü koyu "göz": taç yaprak diplerinde
+// sıklamene özgü koyu "göz": taç yaprak diplerinde alev biçimli leke, ince damarlarla yaprağa yayılır
 C.eye = (() => { const [c, x] = cnv();
-  x.fillStyle = '#fff';
-  for (const a of PETAL_ANG) { x.save(); x.translate(TS / 2, TS / 2); x.rotate(-a); x.beginPath(); x.ellipse(0, 25, 8, 10, 0, 0, 6.28); x.fill(); x.restore(); }
-  x.beginPath(); x.arc(TS / 2, TS / 2, 23, 0, 6.28); x.fill();
+  for (const [a, l, w, b] of PETALS) {
+    x.save(); x.translate(TS / 2, HEAD_Y); x.rotate(-a);
+    const e = 12 + l * .42, g = x.createLinearGradient(0, 12, 0, e); g.addColorStop(0, '#fff'); g.addColorStop(.5, 'rgba(255,255,255,.85)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.beginPath(); x.moveTo(-w * .8, 12);
+    x.quadraticCurveTo(-w * .75, 12 + l * .25, b * .15, e); x.quadraticCurveTo(w * .75, 12 + l * .25, w * .8, 12); x.closePath(); x.fill();
+    const g2 = x.createLinearGradient(0, 16, 0, 12 + l * .6); g2.addColorStop(0, 'rgba(255,255,255,.9)'); g2.addColorStop(1, 'rgba(255,255,255,0)');
+    x.strokeStyle = g2; x.lineWidth = 2; x.lineCap = 'round';
+    for (const s of [-1, 1]) { x.beginPath(); x.moveTo(s * w * .35, 18); x.quadraticCurveTo(s * w * .45, 12 + l * .35, s * w * .3 + b * .25, 12 + l * .6); x.stroke(); }
+    x.restore();
+  }
+  x.fillStyle = '#fff'; x.beginPath(); x.arc(TS / 2, HEAD_Y, 24, 0, 6.28); x.fill();
+  return c; })();
+// başçık (anter) konisi: sarkık çiçeğin ağzından öne çıkan sarı uç; tint edilmez, başla birlikte döner
+C.anther = (() => { const [c, x] = cnv(), cx = TS / 2, cy = HEAD_Y - 21;
+  x.lineJoin = 'round';
+  for (const [dx, h] of [[-6, 10], [6, 10], [0, 13]]) {
+    x.beginPath(); x.moveTo(cx + dx - 4, cy + 6); x.quadraticCurveTo(cx + dx - 3, cy + 6 - h, cx + dx, cy + 4 - h); x.quadraticCurveTo(cx + dx + 3, cy + 6 - h, cx + dx + 4, cy + 6); x.closePath();
+    x.fillStyle = '#F8C72E'; x.fill(); x.lineWidth = 2.5; x.strokeStyle = '#B07A0C'; x.stroke();
+  }
   return c; })();
 C.face2 = (() => { const [c, x] = cnv();
   eyes(x, TS / 2, TS * .45, TS * .15, TS * .11, 'happy');
@@ -178,15 +207,48 @@ C.face2 = (() => { const [c, x] = cnv();
   return c; })();
 // kalp biçimli, gümüş desenli sıklamen yaprağı; sapı alt ortada
 C.leaf = (() => { const [c, x] = cnv();
-  x.strokeStyle = '#3F8A4F'; x.lineWidth = 6; x.lineCap = 'round'; x.beginPath(); x.moveTo(64, 98); x.lineTo(64, 125); x.stroke();
+  x.lineCap = 'round';
+  x.strokeStyle = '#1F5E33'; x.lineWidth = 10; x.beginPath(); x.moveTo(64, 98); x.lineTo(64, 125); x.stroke();
+  x.strokeStyle = '#4BA85E'; x.lineWidth = 5; x.beginPath(); x.moveTo(64, 98); x.lineTo(64, 123); x.stroke();
   const heart = (s) => { x.save(); x.translate(64, 64); x.scale(s, s); x.translate(-64, -64);
-    x.beginPath(); x.moveTo(64, 98); x.bezierCurveTo(42, 116, 8, 100, 14, 70); x.bezierCurveTo(20, 40, 50, 22, 64, 8);
-    x.bezierCurveTo(78, 22, 108, 40, 114, 70); x.bezierCurveTo(120, 100, 86, 116, 64, 98); x.restore(); };
-  heart(1); const g = x.createLinearGradient(0, 8, 0, 110); g.addColorStop(0, '#46A45F'); g.addColorStop(1, '#2C7442'); x.fillStyle = g; x.fill();
-  x.lineWidth = 3; x.strokeStyle = '#1F5E33'; x.stroke();
-  heart(.62); x.lineWidth = 9; x.strokeStyle = 'rgba(214,236,222,.55)'; x.stroke();          // gümüş halka
-  x.strokeStyle = 'rgba(255,255,255,.35)'; x.lineWidth = 3; x.beginPath(); x.moveTo(64, 96); x.lineTo(64, 22); x.stroke();
-  for (const s of [-1, 1]) { x.beginPath(); x.moveTo(64, 70); x.quadraticCurveTo(64 + s * 22, 58, 64 + s * 36, 64); x.stroke(); }
+    x.beginPath(); x.moveTo(64, 98); x.bezierCurveTo(42, 116, 8, 100, 12, 70); x.bezierCurveTo(16, 42, 46, 26, 64, 7);
+    x.bezierCurveTo(82, 26, 112, 42, 116, 70); x.bezierCurveTo(120, 100, 86, 116, 64, 98); x.closePath(); x.restore(); };
+  heart(1); const g = x.createLinearGradient(0, 8, 0, 110); g.addColorStop(0, '#5DBB6C'); g.addColorStop(1, '#2F8045'); x.fillStyle = g; x.fill();
+  x.save(); heart(1); x.clip();
+  x.fillStyle = 'rgba(10,60,30,.22)'; x.fillRect(64, 0, 64, TS);                                  // orta damarın bir yanı gölgede
+  // sıklamen yaprağının gümüş, çam ağacı biçimli deseni
+  x.beginPath(); x.moveTo(64, 30);
+  for (const [dx, y] of [[16, 44], [10, 46], [28, 62], [20, 64], [36, 82], [16, 84], [22, 94]]) x.lineTo(64 + dx, y);
+  x.lineTo(64, 90);
+  for (const [dx, y] of [[-22, 94], [-16, 84], [-36, 82], [-20, 64], [-28, 62], [-10, 46], [-16, 44]]) x.lineTo(64 + dx, y);
+  x.closePath(); x.lineJoin = 'round'; x.lineWidth = 7; x.strokeStyle = 'rgba(220,242,226,.6)'; x.stroke();
+  x.strokeStyle = 'rgba(20,80,40,.55)'; x.lineWidth = 2.5;                                         // damarlar
+  x.beginPath(); x.moveTo(64, 98); x.lineTo(64, 16); x.stroke();
+  for (const [y, dx, dy] of [[78, 40, -6], [58, 34, -12], [40, 20, -12]]) for (const s of [-1, 1]) { x.beginPath(); x.moveTo(64, y); x.quadraticCurveTo(64 + s * dx * .5, y + dy * .2, 64 + s * dx, y + dy); x.stroke(); }
+  x.restore();
+  heart(1); x.lineWidth = 5; x.lineJoin = 'round'; x.strokeStyle = '#1F5E33'; x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.45)'; x.beginPath(); x.ellipse(40, 58, 9, 5, -.8, 0, 6.28); x.fill();
+  return c; })();
+// tomurcuk: alt ortadan çıkıp kıvrılan sap (budStem, tint edilmez) ve ucunda sarkan, burgulu kapalı çiçek (bud, taç yaprak rengiyle tint edilir)
+C.budStem = (() => { const [c, x] = cnv();
+  x.lineCap = 'round';
+  const stem = () => { x.beginPath(); x.moveTo(64, 125); x.bezierCurveTo(60, 80, 70, 34, 92, 30); x.quadraticCurveTo(104, 30, 102, 46); };
+  stem(); x.strokeStyle = '#1F5E33'; x.lineWidth = 10; x.stroke();
+  stem(); x.strokeStyle = '#4BA85E'; x.lineWidth = 5; x.stroke();
+  // çanak yapraklar
+  x.lineJoin = 'round';
+  for (const s of [-1, 1]) {
+    x.beginPath(); x.moveTo(102, 44); x.quadraticCurveTo(102 + s * 13, 46, 102 + s * 9, 58); x.quadraticCurveTo(102 + s * 3, 52, 102, 44);
+    x.fillStyle = '#4BA85E'; x.fill(); x.lineWidth = 2.5; x.strokeStyle = '#1F5E33'; x.stroke();
+  }
+  return c; })();
+C.bud = (() => { const [c, x] = cnv();
+  x.beginPath(); x.moveTo(102, 50); x.bezierCurveTo(118, 56, 116, 80, 103, 96); x.bezierCurveTo(90, 80, 88, 56, 102, 50); x.closePath();
+  const g = x.createLinearGradient(0, 50, 0, 96); g.addColorStop(0, '#bdbdbd'); g.addColorStop(.5, '#f0f0f0'); g.addColorStop(1, '#ffffff'); x.fillStyle = g; x.fill();
+  x.save(); x.clip(); x.strokeStyle = 'rgba(0,0,0,.16)'; x.lineWidth = 3;
+  for (const o of [-6, 4]) { x.beginPath(); x.moveTo(102 + o, 52); x.quadraticCurveTo(110 + o, 72, 100 + o * .4, 96); x.stroke(); }
+  x.restore();
+  x.lineWidth = 3; x.lineJoin = 'round'; x.strokeStyle = '#646464'; x.stroke();
   return c; })();
 // yumru: ürün özütünün geldiği yer
 C.tuber = (() => { const [c, x] = cnv();

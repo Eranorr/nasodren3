@@ -7,7 +7,7 @@
  * Kullanım:
  *   npm run dev -- --port 5199            (ayrı bir terminalde)
  *   npm i --no-save playwright-core       (bir kez)
- *   node tools/denge-testi.mjs [deneme=10] [bölümler=1,2,3,4,5,6]
+ *   node tools/denge-testi.mjs [deneme=10] [bölümler=1,2,3,4,5,6,7,8]
  *
  * Tarayıcı: CHROME ortam değişkeni (varsayılan Windows Chrome yolu), adres: GAME_URL.
  * Yalnızca #debug adresindeki window.__ns kancasıyla çalışır.
@@ -17,7 +17,7 @@ try { ({ chromium } = await import('playwright-core')); }
 catch { console.error('playwright-core bulunamadı: npm i --no-save playwright-core'); process.exit(1); }
 
 const N = +(process.argv[2] || 10);
-const LEVELS = (process.argv[3] || '1,2,3,4,5,6').split(',').map(v => +v - 1);
+const LEVELS = (process.argv[3] || '1,2,3,4,5,6,7,8').split(',').map(v => +v - 1);
 
 const b = await chromium.launch({ executablePath: process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
 const page = await b.newPage({ viewport: { width: 420, height: 860 } });
