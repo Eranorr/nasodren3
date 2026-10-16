@@ -21,7 +21,7 @@ const p = await b.newPage();
 await p.goto((process.env.GAME_URL || 'http://localhost:5199/') + '#debug'); await p.waitForFunction(() => window.__ns);
 for (const sc of SCENES) {
   const r = await p.evaluate(async sc => {
-    const SR = 44100, bpm = { menu: 72, act0: 84, act1: 90, act2: 96, win: 92 }[sc] || 90, SEC = Math.ceil(16 * 4 * 60 / bpm) + 3;
+    const SR = 44100, bpm = { menu: 72, act0: 112, act1: 118, act2: 124, win: 92 }[sc] || 90, SEC = Math.ceil(16 * 4 * 60 / bpm) + 3;
     const ctx = new OfflineAudioContext(2, SR * SEC, SR), m = window.__ns.createMusic(ctx, ctx.destination);
     m.setScene(sc); m.prerender(SEC - 3);
     const buf = await ctx.startRendering(), L = buf.getChannelData(0), R = buf.getChannelData(1), pcm = new Int16Array(L.length * 2);

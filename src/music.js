@@ -1,9 +1,10 @@
 /* =========================================================================
-   MÜZİK: dosyasız, prosedürel ve yumuşak.
-   Herkese hitap etsin, uzun dinlemede yormasın diye:
-   - sert dalga (kare, testere) ve davul yok; kalimba benzeri tıngırtı, sıcak pad, yuvarlak bas, çok hafif shaker
-   - majör, tanıdık akor yürüyüşleri; tempo sakin (menü 72, bölümler 84-96 bpm)
-   - 16 ölçülük döngü: ilk 8 ölçü yalnızca eşlik, sonraki 8 ölçüde ezgi girer (tekrar hissi azalır)
+   MÜZİK: dosyasız, prosedürel.
+   Herkese hitap etsin, uzun dinlemede yormasın diye sert dalga (kare, testere) yok; kalimba benzeri tıngırtı, sıcak pad,
+   yuvarlak bas, hafif shaker; majör, tanıdık akor yürüyüşleri.
+   - menü ve kazanma sakin (72 ve 92 bpm); 16 ölçülük döngünün ilk 8 ölçüsü yalnızca eşlik, sonraki 8 ölçüde ezgi girer
+   - bölümler (drive) harekete geçirir: 112-124 bpm, her vuruşta yumuşak, tok bir vuruş (kick), 2. ve 4. vuruşta hafif el
+     şaklaması, 8'lik zıplayan bas, vuruşla nefes alan pad; ezgi 4. ölçüde girer, cümle sonlarında kısa bir yükseliş (riser)
    - her sahnenin elle yazılmış kendi ezgisi var: oyuncu parçayı tanır
    Ses seviyesi ve susturma bu modülün işi değil: çıkış düğümü (müzik kanalı) audio.js'te kısılır.
    ========================================================================= */
@@ -13,13 +14,13 @@ const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 const I = [0, 4, 7, 11], ii = [2, 5, 9, 12], iii = [4, 7, 11, 14], IV = [5, 9, 12, 16], V = [7, 11, 14, 17], vi = [9, 12, 16, 19];
 export const SCENES = {
   menu: { key: 53, bpm: 72, arp: 'sparse', shaker: false, chords: [I, IV, vi, IV, I, iii, IV, V] },
-  act0: { key: 48, bpm: 84, arp: 'flow',   shaker: true,  chords: [I, V, vi, IV, I, V, IV, IV] },   // Tıkanıklık
-  act1: { key: 50, bpm: 90, arp: 'flow',   shaker: true,  chords: [vi, IV, I, V, vi, IV, ii, V] },  // Virüs
-  act2: { key: 52, bpm: 96, arp: 'bright', shaker: true,  chords: [I, iii, IV, V, vi, IV, ii, V] },  // Direnç
+  act0: { key: 48, bpm: 112, arp: 'drive',  shaker: true, drive: true, chords: [I, V, vi, IV, I, V, IV, IV] },   // Tıkanıklık
+  act1: { key: 50, bpm: 118, arp: 'drive',  shaker: true, drive: true, chords: [vi, IV, I, V, vi, IV, ii, V] },  // Virüs
+  act2: { key: 52, bpm: 124, arp: 'bright', shaker: true, drive: true, chords: [I, iii, IV, V, vi, IV, ii, V] },  // Direnç
   win:  { key: 55, bpm: 92, arp: 'bright', shaker: false, chords: [I, V, vi, iii, IV, I, ii, V] },
 };
 const STEPS = 8;                                // ölçüde 8'lik nota
-const ARP = { sparse: [0, null, null, 2, null, null, 1, null], flow: [0, 2, 1, 2, 3, 2, 1, 2], bright: [0, 1, 2, 3, 2, 1, 2, 3] };
+const ARP = { sparse: [0, null, null, 2, null, null, 1, null], flow: [0, 2, 1, 2, 3, 2, 1, 2], bright: [0, 1, 2, 3, 2, 1, 2, 3], drive: [0, 2, 1, 3, 0, 2, 3, 4] };
 
 /* Ezgiler elle yazıldı: her ölçü [adım, uzunluk, derece] üçlüleri (8'lik ızgara, derece 1 = tonik, 8 = bir oktav üst).
    Güçlü vuruşlarda (adım 0 ve 4) akor tonu; küçük adımlarla dalgalanan, söylenebilir çizgi; cümle sonu döngünün başına bağlanır. */
@@ -49,6 +50,7 @@ export function createMusic(ctx, destination) {
   const comp = ctx.createDynamicsCompressor();
   try { comp.threshold.value = -18; comp.knee.value = 20; comp.ratio.value = 3; comp.attack.value = .02; comp.release.value = .3; } catch {}
   master.connect(tone).connect(comp).connect(duck).connect(destination);
+  const drum = ctx.createGain(); drum.connect(master);   // vuruşlar yankısız: tok ve net kalsın
   // küçük oda yankısı: üretilmiş darbe yanıtı, dosya yok
   const verb = ctx.createConvolver(), verbIn = ctx.createGain(); verbIn.gain.value = .22;
   { const len = (ctx.sampleRate * 2.2) | 0, ir = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -78,14 +80,18 @@ export function createMusic(ctx, destination) {
   const env = (g, t, peak, a, d) => { g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(.0001, t + a + d); };
   const osc = (type, f, t, dur, out) => { const o = ctx.createOscillator(); o.type = type; o.frequency.value = f; o.connect(out); o.start(t); o.stop(t + dur + .05); return o; };
 
-  function pad(t, chord, dur) {
+  function pad(t, chord, dur, sd) {
     const g = ctx.createGain(), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = .4;
     g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.026, t + dur * .35); g.gain.setValueAtTime(.026, t + dur * .7); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
-    lp.connect(g).connect(voice);
+    lp.connect(g);
+    if (scene.drive) {   // vuruşla nefes alan pad: her vuruşta kısılıp yeniden açılır
+      const pm = ctx.createGain(); g.connect(pm).connect(voice);
+      for (let k = 0; k < 4; k++) { const tb = t + k * sd * 2; pm.gain.setValueAtTime(.4, tb); pm.gain.linearRampToValueAtTime(1, tb + sd * 1.6); }
+    } else g.connect(voice);
     for (const n of chord) for (const det of [-6, 6]) osc('triangle', mtof(scene.key + n) * Math.pow(2, det / 1200), t, dur, lp);
   }
-  function bass(t, n, dur) {
-    const g = ctx.createGain(); env(g, t, .085, .03, dur); g.connect(voice);
+  function bass(t, n, dur, vol = .085) {
+    const g = ctx.createGain(); env(g, t, vol, dur < .3 ? .01 : .03, dur); g.connect(voice);
     osc('sine', mtof(scene.key + n - 12), t, dur + .1, g);
     const h = ctx.createGain(); env(h, t, .012, .03, dur * .6); h.connect(voice); osc('triangle', mtof(scene.key + n), t, dur, h);   // küçük hoparlörde de duyulsun
   }
@@ -101,6 +107,23 @@ export function createMusic(ctx, destination) {
     const o = osc('triangle', f, t, dur + .35, lp), vib = ctx.createOscillator(), vg = ctx.createGain();   // hafif vibrato
     vib.frequency.value = 5; vg.gain.value = f * .004; vib.connect(vg).connect(o.frequency); vib.start(t + .15); vib.stop(t + dur + .4);
   }
+  function kick(t, vol) {   // yumuşak, tok vuruş: alçalan sinüs, tıkırtısız
+    const g = ctx.createGain(), o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(46, t + .13);
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .006); g.gain.exponentialRampToValueAtTime(.0001, t + .32);
+    o.connect(g).connect(drum); o.start(t); o.stop(t + .36);
+  }
+  function clap(t, vol) {   // hafif el şaklaması: kısa, orta frekansta süzülmüş gürültü
+    const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(); s.buffer = noiseBuf;
+    f.type = 'bandpass'; f.frequency.value = 1700; f.Q.value = .8; env(g, t, vol, .003, .11); s.connect(f).connect(g); g.connect(drum); g.connect(verbIn);
+    s.start(t); s.stop(t + .16);
+  }
+  function riser(t, dur) {   // cümle sonunda yükselen hışırtı: bir sonraki bölüme hazırlar
+    const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(); s.buffer = noiseBuf; s.loop = true;
+    f.type = 'bandpass'; f.Q.value = 1.2; f.frequency.setValueAtTime(500, t); f.frequency.exponentialRampToValueAtTime(3200, t + dur);
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.022, t + dur * .95); g.gain.exponentialRampToValueAtTime(.0001, t + dur + .03);
+    s.connect(f).connect(g).connect(voice); s.start(t); s.stop(t + dur + .05);
+  }
   function shaker(t, vol) {
     const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(); s.buffer = noiseBuf;
     f.type = 'highpass'; f.frequency.value = 7000; env(g, t, vol, .004, .05); s.connect(f).connect(g).connect(voice); s.start(t); s.stop(t + .08);
@@ -108,12 +131,20 @@ export function createMusic(ctx, destination) {
 
   function playStep(t, sd) {
     const inBar = step % STEPS, bar = Math.floor(step / STEPS) % 16, b8 = bar % 8, chord = scene.chords[b8];
-    if (inBar === 0) { pad(t, chord, sd * STEPS * 1.08); bass(t, chord[0], sd * 3.2); }
-    if (inBar === 4) bass(t, chord[0] + (b8 % 2 ? 7 : 0), sd * 3);
+    if (inBar === 0) pad(t, chord, sd * STEPS * 1.08, sd);
+    if (scene.drive) {
+      if (inBar % 2 === 0) kick(t, inBar === 0 ? .24 : .18);                                 // her vuruş
+      if (inBar === 2 || inBar === 6) clap(t, .028);                                        // 2. ve 4. vuruş
+      bass(t, chord[0] + (inBar % 2 ? 12 : 0) + (inBar === 7 && b8 % 2 ? 7 : 0), sd * .8, .06);   // 8'lik zıplayan bas
+      if (b8 === 7 && inBar === 4) riser(t, sd * 4);
+    } else {
+      if (inBar === 0) bass(t, chord[0], sd * 3.2);
+      if (inBar === 4) bass(t, chord[0] + (b8 % 2 ? 7 : 0), sd * 3);
+    }
     const a = ARP[scene.arp][inBar];
     if (a !== null) pluck(t, chord[a % chord.length] + (a >= chord.length ? 12 : 0), inBar === 0 ? .05 : .036);
-    if (scene.shaker && inBar % 2 === 1) shaker(t, inBar === 3 || inBar === 7 ? .007 : .0045);
-    if (bar >= 8) for (const m of melody) if (m.bar === b8 && m.st === inBar) lead(t, m.n, m.len * sd * .95);   // ikinci yarıda ezgi
+    if (scene.shaker && (scene.drive || inBar % 2 === 1)) shaker(t, inBar % 2 ? (inBar === 3 || inBar === 7 ? .008 : .006) : .003);
+    if (bar >= (scene.drive ? 4 : 8)) for (const m of melody) if (m.bar === b8 && m.st === inBar) lead(t, m.n, m.len * sd * .95);   // ezgi: bölümlerde erken girer
   }
   function schedule() {
     if (!running) return;

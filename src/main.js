@@ -3,7 +3,18 @@ import { COLS, ROWS, ACTS, LEVELS, DEMO, FACTS, INFO, HOWTO, CLOSING, TIPS, SKIN
 import { prog, save, totalStars, addScore, cleanName } from './save.js';
 import { initAudio, playSfx, setVolumes, musicScene, musicDuck, audioHidden } from './audio.js';
 import { createMusic } from './music.js';
-import { TS, cnv, seeded, C, HALO, halo, HEAD_Y } from './textures.js';
+import { TS, cnv, seeded, C, HALO, halo } from './textures.js';
+import { FACE_GRID, FACE_SINK, FACE_BOX, drawFace } from './face.js';
+import { net } from './net.js';
+// sıklamen yılan: src/assets/siklamen_yilan.png çiziminden çıkarılan parçalar (tools/yilan-parcalari.py)
+import YILAN from './assets/yilan/yilan.json';
+import basURL from './assets/yilan/bas.png';
+import yaprak1URL from './assets/yilan/yaprak1.png';
+import tomurcukURL from './assets/yilan/tomurcuk.png';
+import yaprak2URL from './assets/yilan/yaprak2.png';
+import tomurcuk2URL from './assets/yilan/tomurcuk2.png';
+import sapURL from './assets/yilan/sap.png';
+import kuyrukURL from './assets/yilan/kuyruk.png';
 
 // Mobilde konsol: adrese ?eruda ekle (yalnızca geliştirme modunda)
 if (import.meta.env.DEV && /eruda/.test(location.search + location.hash)) import('eruda').then(m => m.default.init());
@@ -42,7 +53,7 @@ stageEl.prepend(app.canvas);
 app.ticker.maxFPS = 0;
 
 const T = {};
-for (const k of ['ball', 'face', 'soft', 'dot', 'septum', 'crust', 'plug', 'portal', 'petal', 'petals', 'eye', 'anther', 'face2', 'leaf', 'budStem', 'bud', 'tuber', 'bubble', 'bloom', 'swell']) T[k] = PIXI.Texture.from(C[k]);
+for (const k of ['ball', 'face', 'soft', 'dot', 'septum', 'crust', 'plug', 'portal', 'petal', 'bubble', 'bloom', 'swell']) T[k] = PIXI.Texture.from(C[k]);
 // tahtadaki öğeler haleli: toplanabilirler açık bir ışıkla, virüs koyu bir gölgeyle zeminden ayrılır
 const HALO_RGB = { mucus: '255,250,214', infected: '236,220,255', gold: '255,236,160', serum: '226,244,255', breeze: '222,250,232', immune: '240,234,255' };
 for (const k of ['gold', 'serum', 'breeze', 'immune']) T[k] = PIXI.Texture.from(halo(C[k], HALO_RGB[k], .85));
@@ -50,13 +61,21 @@ T.virus = PIXI.Texture.from(halo(C.virus, '60,8,30', .4)); T.virusBare = PIXI.Te
 T.mucus = C.mucus.map(c => PIXI.Texture.from(halo(c, HALO_RGB.mucus, .85)));
 T.infected = C.infected.map(c => PIXI.Texture.from(halo(c, HALO_RGB.infected, .85)));
 T.polyp = C.polyp.map(c => PIXI.Texture.from(c));
+// sıklamen yılanın parçaları; taç yapraklı olanlar görünümün rengine boyanır (yilanDoku)
+const loadImg = src => new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = src; });
+const YI = {};
+await Promise.all(Object.entries({ bas: basURL, yaprak1: yaprak1URL, tomurcuk: tomurcukURL, yaprak2: yaprak2URL, tomurcuk2: tomurcuk2URL, sap: sapURL, kuyruk: kuyrukURL }).map(async ([k, u]) => {
+  const im = await loadImg(u), c = document.createElement('canvas'); c.width = im.width; c.height = im.height; c.getContext('2d').drawImage(im, 0, 0); YI[k] = c;
+}));
+T.stem = PIXI.Texture.from(YI.sap); T.tail = PIXI.Texture.from(YI.kuyruk);
 
 const petalLayer = new PIXI.Container();
 const board = new PIXI.Container();
 // Şekilli bölümde "sinüsün içindeyiz": ekranı dolduran doku (bleedS), ostiumdan sızan ışık (lightS kapalı, lightOpenS açık ostium)
 const bleedS = new PIXI.Sprite(), lightS = new PIXI.Sprite(), lightOpenS = new PIXI.Sprite();
 lightS.anchor.set(.5); lightOpenS.anchor.set(.5);
-app.stage.addChild(bleedS, petalLayer, board);
+const oppLayer = new PIXI.Container();   // çok oyunculu: diğer oyuncuların tahtaları
+app.stage.addChild(bleedS, petalLayer, board, oppLayer);
 const shadowG = new PIXI.Graphics(), baseG = new PIXI.Graphics(), inflamG = new PIXI.Graphics(), rimG = new PIXI.Graphics();   // inflamG: iltihap kızarıklığı, bölüm bitince solar
 const bloomLayer = new PIXI.Container(), gateLayer = new PIXI.Container();
 const obsLayer = new PIXI.Container(), itemLayer = new PIXI.Container(), moverLayer = new PIXI.Container(), virusLayer = new PIXI.Container();
@@ -81,20 +100,20 @@ const gateGlow = new PIXI.Sprite(T.soft), gateRing = new PIXI.Sprite(T.portal);
 gateGlow.anchor.set(.5); gateRing.anchor.set(.5); gateGlow.tint = 0x2FD6BE; gateRing.tint = 0x0E9C88;
 gateLayer.addChild(gateGlow, gateRing); gateLayer.visible = false;
 
-const leafLayer = new PIXI.Container(), bodyLayer = new PIXI.Container(), lumpLayer = new PIXI.Container();   // lump: gövdede taşınan virüsler
-const stemLineLayer = new PIXI.Container(), stemHiLayer = new PIXI.Container();   // sıklamen sapının konturu ve parlak şeridi (gövdenin altında / üstünde)
-const bodyPool = [], leafPool = [], lumpPool = [], stemLinePool = [], stemHiPool = [], budPool = [];
-const pooled = (pool, layer, tex) => i => { let s = pool[i]; if (!s) { s = new PIXI.Sprite(tex); s.anchor.set(.5); layer.addChild(s); pool[i] = s; } return s; };
-const bodySprite = pooled(bodyPool, bodyLayer, T.ball), stemLineSprite = pooled(stemLinePool, stemLineLayer, T.dot), stemHiSprite = pooled(stemHiPool, stemHiLayer, T.dot);
-function leafSprite(i) { let s = leafPool[i]; if (!s) { s = new PIXI.Sprite(T.leaf); s.anchor.set(.5, .97); leafLayer.addChild(s); leafPool[i] = s; } return s; }
-// tomurcuk: sap (tint edilmez) + kapalı çiçek (taç yaprak rengi) aynı dönüşümle
-function budSprite(i) { let b = budPool[i]; if (!b) { b = new PIXI.Container(); b.stem = new PIXI.Sprite(T.budStem); b.head = new PIXI.Sprite(T.bud); for (const s of [b.stem, b.head]) { s.anchor.set(.5, .97); b.addChild(s); } leafLayer.addChild(b); budPool[i] = b; } return b; }
-const tuber = new PIXI.Sprite(T.tuber), headPetals = new PIXI.Sprite(T.petals), headEye = new PIXI.Sprite(T.eye), headAnther = new PIXI.Sprite(T.anther);
-const headBase = new PIXI.Sprite(T.ball), headFace = new PIXI.Sprite(T.face2);
-for (const s of [tuber, headBase, headFace]) s.anchor.set(.5);
-for (const s of [headPetals, headEye, headAnther]) s.anchor.set(.5, HEAD_Y / TS);   // çiçeğin merkezi dokunun üst kısmında, yapraklar arkaya uzanır
-snakeLayer.addChild(leafLayer, stemLineLayer, bodyLayer, stemHiLayer, tuber, lumpLayer, headPetals, headEye, headAnther, headBase, headFace);
-
+const decoLayer = new PIXI.Container(), budLayer = new PIXI.Container(), bodyLayer = new PIXI.Container(), lumpLayer = new PIXI.Container();   // deco: sapın üstündeki yapraklar, bud: arkasındaki tomurcuklar; lump: gövdede taşınan virüsler
+const bodyPool = [], lumpPool = [], DECOS = [];
+const bodySprite = i => { let s = bodyPool[i]; if (!s) { s = new PIXI.Sprite(T.ball); s.anchor.set(.5); bodyLayer.addChild(s); bodyPool[i] = s; } return s; };
+// sap: boyunca kesit dokusu gerilen şerit; kuyruk: çizimdeki sivri uç, aynı şeridin son parçası
+function ropeMesh(tex) {
+  const geometry = new PIXI.MeshGeometry({ positions: new Float32Array(4), uvs: new Float32Array(4), indices: new Uint32Array(0) });
+  const m = new PIXI.Mesh({ geometry, texture: tex }); m.cap = 0; return m;
+}
+const stemMesh = ropeMesh(T.stem), tailMesh = ropeMesh(T.tail);
+const headFlower = new PIXI.Sprite();
+headFlower.anchor.set(YILAN.head.ax, YILAN.head.ay);   // çapa: baş hücresinin merkezi; çiçek önde (dokunun solu), sap arkadan (sağdan) girer
+const headBase = new PIXI.Sprite(T.ball), headFace = new PIXI.Sprite(T.face);
+for (const s of [headBase, headFace]) s.anchor.set(.5);
+snakeLayer.addChild(budLayer, tailMesh, stemMesh, bodyLayer, decoLayer, lumpLayer, headFlower, headBase, headFace);
 const BLOOMS = [];
 for (let i = 0; i < 40; i++) { const s = new PIXI.Sprite(T.bloom); s.anchor.set(.5); s.visible = false; bloomLayer.addChild(s); BLOOMS.push({ s, life: 0 }); }
 const BUBBLES = [];
@@ -113,16 +132,21 @@ const obsPool = [];
    DURUM
    ========================================================================= */
 let cell = 20, boardW = 0, boardH = 0, baseX = 0, baseY = 0, calloutBand = 0;   // calloutBand: tahtanın üstünde mesajlara ayrılan şerit
-let mode = 'demo';               // demo | adventure
+let mode = 'demo';               // demo | adventure | versus (çevrim içi çok oyunculu)
 let state = 'demo';              // demo | intro | play | exiting | dying | result | over | paused
 let pausedFrom = null, cfg = DEMO, levelIdx = 0, score = 0, cleared = false;   // score: koşu boyunca (1. bölümden ölene ya da bitirene kadar) birikir
 const bx = new Int16Array(MAXSEG), by = new Int16Array(MAXSEG), px = new Int16Array(MAXSEG), py = new Int16Array(MAXSEG);
 const ix = new Float32Array(MAXSEG), iy = new Float32Array(MAXSEG);
 let len = 0, prevLen = 0, grow = 0, dir = 0, moveDir = 0, queue = [];
 let acc = 0, gameTime = 0, levelStart = 0;
+let rnd = Math.random;            // nesne ve virüs kuraları: çok oyunculu turda herkes aynı tohumla başlar
+let viewR = { x: 0, y: 0, w: 0, h: 0 };   // tahtanın ekrandaki alanı: tek oyunculuda bütün ekran, çok oyunculuda kendi sütunun
+// Bölüm başı: akış oyuncu ilk yönü verene kadar bekler (waiting), sonra yavaş başlayıp birkaç saniyede bölümün hızına çıkar
+let waiting = false;
+const WARM_MS = 3500, WARM_SLOW = .8;   // ilk adım %80 daha yavaş, 3,5 sn'de normal hız
 let eaten = 0, target = 0, exitOpen = false, exitX = 0, exitY = 0, exitDir = 0, exitSteps = 0, exits = [];   // exits: tahta dışındaki çıkış hücreleri; exitX/Y ilki
 let combo = 0, lastEat = -1e9, boostUntil = 0, slowUntil = 0, breezeUntil = 0, immuneUntil = 0;
-let shake = 0, stepCount = 0, autoBot = false, deathReason = '';   // autoBot: denge testi için botun bölüm oynaması (yalnızca #debug)
+let stepCount = 0, autoBot = false, deathReason = '', frozen = false;   // autoBot: denge testi için botun bölüm oynaması, frozen: görünüm denetimi için durdurma (yalnızca #debug)
 const obstacle = new Uint8Array(COLS * ROWS), swellAt = new Uint8Array(COLS * ROWS), visited = new Uint8Array(COLS * ROWS), scratch = new Uint8Array(COLS * ROWS);
 let swellStage = 0;   // swellAt: şişlik hücresinin çekileceği aşama (1 iç, 2 dış katman)
 
@@ -144,6 +168,7 @@ let gameSneezes = 0;
 function stepDur() {
   if (state === 'exiting') return 45;
   let d = cfg.step;
+  if (mode !== 'demo') { const w = Math.min(1, (gameTime - levelStart) / WARM_MS); d *= 1 + WARM_SLOW * (1 - w) * (1 - w); }
   if (gameTime < boostUntil) d *= .62;
   if (gameTime < slowUntil) d *= 1.4;
   return d;
@@ -154,7 +179,12 @@ const running = () => state === 'play' || state === 'exiting' || state === 'demo
    YERLEŞİM
    ========================================================================= */
 function layout() {
-  const w = app.screen.width, h = app.screen.height;
+  const W = app.screen.width, H = app.screen.height;
+  faceLaid = !!cfg.face;
+  viewR = mode === 'versus' ? mpRects(W, H)[0] : { x: 0, y: 0, w: W, h: H };
+  if (cfg.face) return faceLayout(W, H);
+  if (mode === 'versus') return mpSelfLayout(W, H);
+  const w = viewR.w, h = viewR.h;
   // dikey ekranda tahtanın üstünde mesaj şeridi ayrılır: ekran mesajı tahtanın üst kısmını (çoğu bölümde ostiumu) kapatmasın.
   // Yatay ekranda mesajlar tahtanın yanındaki boşluğa yazılır.
   const band = h >= w * .9 ? Math.min(64, Math.round(h * .08)) : 0;
@@ -162,8 +192,7 @@ function layout() {
   boardW = COLS * cell; boardH = ROWS * cell;
   const pad = Math.round(cell * .34), slack = h - boardH;
   calloutBand = Math.min(Math.max(0, slack - pad * 2 - 8), 100);
-  baseX = Math.round((w - boardW) / 2); baseY = Math.round(calloutBand + (slack - calloutBand) / 2) - 2;
-  board.position.set(baseX, baseY);
+  baseX = Math.round(viewR.x + (w - boardW) / 2); baseY = Math.round(viewR.y + calloutBand + (slack - calloutBand) / 2) - 2;
   const cr = CORNER * cell;   // zeminin köşe yarıçapı; çerçeve aynı merkezli yaylarla dışa doğru büyür
   shadowG.clear().roundRect(-pad, -pad + cell * .28, boardW + pad * 2, boardH + pad * 2, cr + pad).fill({ color: 0x9C3C62, alpha: .16 });
   rimG.clear().roundRect(-pad, -pad, boardW + pad * 2, boardH + pad * 2, cr + pad).stroke({ width: pad, color: 0xE06C8F, alignment: 1 })
@@ -175,14 +204,57 @@ function layout() {
   for (const m of movers) m.s.width = m.s.height = cell * 1.1;
   placeGate();
   applyInside();
+  if (mode === 'versus') mpLayout(W, H);
+}
+// çok oyunculu: tahta kendi kartının içinde (kart üstünde ad etiketi şeridi); çerçeve yerine kartın gölgesi ve ince kenarı
+function mpSelfLayout(W, H) {
+  const R = viewR, rad = R.rad;
+  cell = R.cell; boardW = COLS * cell; boardH = ROWS * cell; calloutBand = 0;
+  baseX = Math.round(R.x + (R.w - boardW) / 2); baseY = Math.round(R.y + R.hd + (R.h - R.hd - boardH) / 2);
+  const vx = R.x - baseX, vy = R.y - baseY;
+  shadowG.clear().roundRect(vx, vy + 6, R.w, R.h, rad).fill({ color: 0x6E2A4A, alpha: .22 });
+  mpSelfRim();
+  drawBoard();
+  flashG.clear().roundRect(vx, vy, R.w, R.h, rad).fill(0xFF3355);
+  placeObstacleSprites();
+  for (const it of items) placeItem(it, true);
+  for (const m of movers) m.s.width = m.s.height = cell * 1.1;
+  placeGate();
+  applyInside();
+  mpLayout(W, H);
+}
+/* Ana menü: yüz, menü kartlarının bıraktığı en geniş boşluğa yerleşir (dikeyde başlığın altı ile kartın üstü, yatayda
+   kartların yanı). Yer varsa bütün baş, yoksa sinüslerden ağza kadar olan kesit sığdırılır; baş kartların altına taşar. */
+let faceLaid = false;
+function faceLayout(w, h) {
+  const st = stageEl.getBoundingClientRect(), home = $('scrHome'), fw = FACE_BOX.x1 - FACE_BOX.x0;
+  const fit = (aw, ah) => { const whole = Math.min(aw / fw, ah / (FACE_BOX.whole[1] - FACE_BOX.whole[0]));
+    return whole >= 12 ? whole : Math.min(aw / fw, ah / (FACE_BOX.crop[1] - FACE_BOX.crop[0])); };
+  let best = { x: 0, y: 0, w, h, c: fit(w, h) * .9 };   // yer yoksa ekranın tamamı (kartların arkasında)
+  if (home.classList.contains('show')) {
+    const [br, sh] = [home.querySelector('.brand'), home.querySelector('.sheet')].map(e => { const b = e.getBoundingClientRect(); return { l: b.left - st.left, r: b.right - st.left, t: b.top - st.top, b: b.bottom - st.top }; });
+    const cand = [], R = Math.max(br.r, sh.r), L = Math.min(br.l, sh.l);
+    if (sh.t > br.b) cand.push({ x: 0, y: Math.max(0, br.b), w, h: Math.min(h, sh.t) - Math.max(0, br.b) });
+    cand.push({ x: R, y: 0, w: w - R, h }, { x: 0, y: 0, w: L, h });
+    for (const c of cand) if (c.w > 0 && c.h > 0) { c.c = fit(c.w - 8, c.h - 8); if (c.c > best.c && c.c >= 7) best = c; }
+  }
+  cell = Math.max(6, Math.floor(best.c));
+  boardW = COLS * cell; boardH = ROWS * cell; calloutBand = 0;
+  baseX = Math.round(best.x + best.w / 2 - 13 * cell); baseY = Math.round(best.y + best.h / 2 - FACE_BOX.cy * cell);
+  shadowG.clear(); rimG.clear(); flashG.clear();
+  drawBoard(); placeObstacleSprites();
+  for (const it of items) placeItem(it, true);
+  applyInside();
 }
 // Zemin hücrelere bölünmeden tek parça, düz bir mukoza yüzeyi olarak çizilir; ızgaraya bağlı olmayan hafif lekeler doku verir.
 // Şekilli bölümde zemin, görseldeki sinüs hattıyla birebir çizilir (drawSinusFloor); dışı düz renktir.
 const isWall = i => obstacle[i] === 5;
 function drawBoard() {
   const rnd = seeded(7), FLOOR = 0xF6C3BF;
-  baseG.clear(); floorS.visible = !!cfg.shape;
-  if (!cfg.shape) {
+  baseG.clear(); floorS.visible = !!(cfg.shape || cfg.face);
+  if (mode === 'versus') baseG.roundRect(viewR.x - baseX, viewR.y - baseY, viewR.w, viewR.h, viewR.rad).fill(CARD_BG);   // kartın zemini
+  if (cfg.face) drawFaceFloor();
+  else if (!cfg.shape) {
     baseG.rect(0, 0, boardW, boardH).fill({ color: FLOOR });
     for (let k = 0; k < COLS * ROWS / 5; k++) {
       const x = rnd() * COLS, y = rnd() * ROWS, r = cell * (.35 + rnd() * .6), light = rnd() < .5;
@@ -198,8 +270,14 @@ function drawBoard() {
 let floorTex = null;
 function drawSinusFloor() {
   // tuval ekran boyunda: ostium kanalı tahtanın kenarında bitmez, ekranın kenarına kadar uzanır
-  const res = app.renderer.resolution, k = cell * res, cw = Math.ceil(app.screen.width * res), ch = Math.ceil(app.screen.height * res);
-  const offX = baseX * res, offY = baseY * res, o = cfg.shape.outline, n = o.length / 2, path = new Path2D();
+  const res = app.renderer.resolution, cv = sinusCanvas(cell * res, baseX * res, baseY * res, Math.ceil(app.screen.width * res), Math.ceil(app.screen.height * res));
+  if (floorTex) floorTex.destroy(true);
+  floorTex = new PIXI.Texture({ source: new PIXI.CanvasSource({ resource: cv }) });
+  floorS.texture = floorTex; floorS.position.set(-baseX, -baseY); floorS.width = app.screen.width; floorS.height = app.screen.height;
+}
+// k: hücre başına piksel, offX/offY: tahtanın tuvaldeki yeri, cw/ch: tuval boyu
+function sinusCanvas(k, offX, offY, cw, ch) {
+  const o = cfg.shape.outline, n = o.length / 2, path = new Path2D();
   // noktalar arasından orta noktalara eğri: köşesiz, pürüzsüz hat
   const P = i => [o[(i % n) * 2] * k + offX, o[(i % n) * 2 + 1] * k + offY], M = i => { const a = P(i), b = P(i + 1); return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; };
   let area = 0; for (let i = 0; i < n; i++) { const a = P(i), b = P(i + 1); area += a[0] * b[1] - b[0] * a[1]; }
@@ -224,6 +302,13 @@ function drawSinusFloor() {
   }
   x.globalAlpha = .9; x.strokeStyle = '#FCE6E2'; x.lineWidth = k * .18; x.stroke(path);   // iç kenar çizgisi (kırpıldığı için yarısı görünür)
   x.restore();
+  return cv;
+}
+// ana menüdeki yüz: ekran boyu tuvale bir kez çizilir
+function drawFaceFloor() {
+  const res = app.renderer.resolution, cv = document.createElement('canvas');
+  cv.width = Math.ceil(app.screen.width * res); cv.height = Math.ceil(app.screen.height * res);
+  drawFace(cv.getContext('2d'), cell * res, baseX * res, baseY * res, 11);
   if (floorTex) floorTex.destroy(true);
   floorTex = new PIXI.Texture({ source: new PIXI.CanvasSource({ resource: cv }) });
   floorS.texture = floorTex; floorS.position.set(-baseX, -baseY); floorS.width = app.screen.width; floorS.height = app.screen.height;
@@ -239,25 +324,35 @@ const flowBuf = new Int16Array(COLS * ROWS), farCells = [], drift = [];
 for (let i = 0; i < 26; i++) { const s = new PIXI.Sprite(T.dot); s.anchor.set(.5); s.tint = 0xFFF4F2; driftLayer.addChild(s); drift.push({ s, x: 0, y: 0, tx: 0, ty: 0, v: 1, a: 0, ph: 0, sz: .2 }); }
 
 function applyInside() {
-  const on = !!cfg.shape;
-  document.body.classList.toggle('inside', on);
-  petalLayer.visible = !on; shadowG.visible = rimG.visible = !on; inflamG.visible = !on;
-  bleedS.visible = lightS.visible = lightOpenS.visible = on; driftLayer.visible = on && !REDUCED;   // hareket azaltılmışsa parçacık yok
+  const on = !!cfg.shape, face = !!cfg.face, vs = mode === 'versus', full = on && !vs;   // full: ekranı kaplayan "sinüsün içindeyiz"
+  document.body.classList.toggle('inside', full);
+  petalLayer.visible = !full; shadowG.visible = rimG.visible = !full && !face; inflamG.visible = !on && !face;
+  bleedS.visible = lightS.visible = lightOpenS.visible = full; driftLayer.visible = (on || face) && !REDUCED;   // hareket azaltılmışsa parçacık yok
+  if (face) {   // menüdeki yüz: çerçeve yok; sinüslerden süzülen parçacıklar kanallardan burun deliklerine iner
+    floorMaskG.clear().rect(-baseX, -baseY, app.screen.width, app.screen.height).fill(0xffffff);
+    maskG.clear().rect(-baseX, -baseY, app.screen.width, app.screen.height).fill(0xffffff);
+    floorS.tint = 0xFFFFFF; buildFlow(FACE_SINK);
+    for (const p of drift) respawnDrift(p, true);
+    return;
+  }
   // maskeler: şekilli bölümde çerçeve yok, zemin köşesiz ve ostium ışıması ekran boyunca serbest; diğerlerinde yuvarlak çerçeve
   const pad = Math.round(cell * .34), cr = CORNER * cell;
   floorMaskG.clear();
-  if (on) floorMaskG.rect(-baseX, -baseY, app.screen.width, app.screen.height).fill(0xffffff); else floorMaskG.roundRect(0, 0, boardW, boardH, cr).fill(0xffffff);
+  const vx = viewR.x - baseX, vy = viewR.y - baseY;   // kendi alanı (çok oyunculuda sütun): kanal ve ışıma bunun dışına taşmaz
+  const area = g => vs ? g.roundRect(vx, vy, viewR.w, viewR.h, viewR.rad) : g.rect(vx, vy, viewR.w, viewR.h);   // çok oyunculuda kartın köşeleri
+  if (on) area(floorMaskG).fill(0xffffff); else floorMaskG.roundRect(0, 0, boardW, boardH, cr).fill(0xffffff);
   maskG.clear();   // akış: şekilli bölümde ekranın kenarına kadar kanalda görünür, diğerlerinde tahtada kırpılır
-  if (on) maskG.rect(-baseX, -baseY, app.screen.width, app.screen.height).fill(0xffffff); else maskG.rect(-2, -2, boardW + 4, boardH + 4).fill(0xffffff);
+  if (on) area(maskG).fill(0xffffff); else maskG.rect(-2, -2, boardW + 4, boardH + 4).fill(0xffffff);
   gateMaskG.clear();
-  if (on) gateMaskG.rect(-baseX, -baseY, app.screen.width, app.screen.height).fill(0xffffff);
+  if (on) area(gateMaskG).fill(0xffffff);
   else gateMaskG.roundRect(-pad, -pad, boardW + pad * 2, boardH + pad * 2, cr + pad).fill(0xffffff);
   if (!on) { floorS.tint = 0xFFFFFF; return; }
   // ostiumun sinüse açılan iç ucu (kanalın şekle değen ucu), hücre biriminde
   let sx = 0, n = 0, inner = null;
   cfg.shape.grid.forEach((row, y) => { for (let x = 0; x < COLS; x++) if (row[x] === '=') { sx += x; n++; inner = inner === null ? y : (exitY < 0 ? Math.max(inner, y) : Math.min(inner, y)); } });
   ostX = sx / n + .5; ostY = inner + (exitY < 0 ? 1 : 0);
-  buildFlow(); buildBleed(); buildLight();
+  const sink = []; cfg.shape.grid.forEach((row, y) => { for (let x = 0; x < COLS; x++) if (row[x] === '=') sink.push(x, y); });
+  buildFlow(sink); buildBleed(); buildLight();
   for (const p of drift) respawnDrift(p, true);
 }
 // ekranı dolduran doku: ortası sinüsün dış rengi, kenarlara doğru koyulaşır (vinyet)
@@ -291,11 +386,11 @@ function buildLight() {
   for (const sp of [lightS, lightOpenS]) { sp.position.set(gx, gy); sp.width = sp.height = H * 2; }
   lightS.baseScale = lightS.scale.x;
 }
-// ostiuma akış: '=' hücrelerinden geriye yol mesafesi (duvar dışındaki her hücre geçilir)
-function buildFlow() {
+// ostiuma akış: varış hücrelerinden (ostium '=', menüde burun delikleri) geriye yol mesafesi (duvar dışındaki her hücre geçilir)
+function buildFlow(sink) {
   flowBuf.fill(-1); farCells.length = 0;
-  const g = cfg.shape.grid, q = [];
-  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) if (g[y][x] === '=') { flowBuf[y * COLS + x] = 0; q.push(x, y); }
+  const g = cfg.shape ? cfg.shape.grid : FACE_GRID, q = sink.slice();
+  for (let i = 0; i < q.length; i += 2) flowBuf[q[i + 1] * COLS + q[i]] = 0;
   for (let h = 0; h < q.length;) {
     const x = q[h++], y = q[h++], d0 = flowBuf[y * COLS + x];
     for (let d = 0; d < 4; d++) {
@@ -321,10 +416,10 @@ function nextDrift(p) {
   const k = ((Math.random() * opts.length / 2) | 0) * 2; p.tx = opts[k]; p.ty = opts[k + 1];
 }
 function updateInside(dt, now) {
-  if (!cfg.shape) return;
+  if (!cfg.shape && !cfg.face) return;
   // nefes: ışık ve karanlık birkaç saniyede bir hafifçe kabarıp iner
   const br = REDUCED ? 0 : Math.sin(now * 6.283 / BREATH_MS);
-  lightOpen += ((exitOpen ? 1 : 0) - lightOpen) * (1 - Math.exp(-dt * .003));
+  if (cfg.shape) lightOpen += ((exitOpen ? 1 : 0) - lightOpen) * (1 - Math.exp(-dt * .003));
   const sc = (lightS.baseScale || lightS.scale.x) * (1 + .025 * br);
   lightS.scale.set(sc); lightOpenS.scale.set(sc);
   lightS.alpha = (1 - lightOpen) * (.92 - .08 * br); lightOpenS.alpha = lightOpen * (.92 - .08 * br);
@@ -334,7 +429,7 @@ function updateInside(dt, now) {
     if (d <= k) { p.x = p.tx; p.y = p.ty; nextDrift(p); } else { p.x += dx / d * k; p.y += dy / d * k; }
     p.a = Math.min(1, p.a + dt / 700);
     const near = flowBuf[Math.round(p.y) * COLS + Math.round(p.x)];   // ostiuma yaklaşınca söner
-    p.s.alpha = .32 * p.a * Math.min(1, Math.max(0, near) / 3);
+    p.s.alpha = (cfg.face ? .7 : .32) * p.a * Math.min(1, Math.max(0, near) / 3);
     p.s.position.set((p.x + .5 + Math.sin(now * .0013 + p.ph) * .18) * cell, (p.y + .5 + Math.cos(now * .0011 + p.ph) * .18) * cell);
     p.s.width = p.s.height = cell * p.sz * (1 + .15 * br);
   }
@@ -363,8 +458,8 @@ function placeObstacleSprites() {
 function setupBoard(c) {
   cfg = c;
   obstacle.fill(0); swellAt.fill(0); swellStage = 0;
-  if (c.shape) buildShape(c.shape);
-  for (let i = 0; i < obstacle.length; i++) if (cornerWall[i]) obstacle[i] = 5;
+  if (c.shape || c.face) buildShape(c.shape || { grid: FACE_GRID });
+  if (!c.face) for (let i = 0; i < obstacle.length; i++) if (cornerWall[i]) obstacle[i] = 5;
   for (const r of c.obs) {
     const kind = (r.w === 1 || r.h === 1) && r.w * r.h > 2 ? 3 : 1;
     for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) obstacle[y * COLS + x] = kind;
@@ -391,8 +486,8 @@ function setupBoard(c) {
   lv = { sneezes: 0, golds: 0, hardened: 0, maxLen: len, trapped: 0, carried: 0, expelled: 0, replicated: 0, hits: 0, immunes: 0, immuneSeen: 0 };
   spawn('mucus'); spawn('mucus');
   for (let i = 0; i < (c.virus || 0); i++) spawnVirus();
+  if (!!c.face !== faceLaid) layout(); else applyInside();   // menüdeki yüz ile bölümlerin hücre boyu farklı
   renderSnake(1, 16, performance.now());
-  applyInside();
 }
 
 /* =========================================================================
@@ -410,7 +505,7 @@ function buildShape(shape) {
       else if (x === 0) exits.push([-1, y]); else if (x === COLS - 1) exits.push([COLS, y]);
     }
   }
-  [exitX, exitY] = exits[0];
+  if (exits.length) [exitX, exitY] = exits[0];
   if (!cfg.swell) return;
   // duvara ya da kanala bitişik iki katman şişkin mukoza: önce dış katman, sonra onun içi
   const closed = (x, y) => x < 0 || y < 0 || x >= COLS || y >= ROWS || obstacle[y * COLS + x] === 5 || obstacle[y * COLS + x] === 7;
@@ -472,8 +567,8 @@ function spawn(type) {
       cand.push(x, y);
     }
     if (!cand.length) continue;
-    const k = ((Math.random() * cand.length / 2) | 0) * 2;
-    const vr = (Math.random() * 3) | 0, tex = type === 'mucus' ? T.mucus[vr] : T[type];
+    const k = ((rnd() * cand.length / 2) | 0) * 2;
+    const vr = (rnd() * 3) | 0, tex = type === 'mucus' ? T.mucus[vr] : T[type];
     const s = new PIXI.Sprite(tex); s.anchor.set(.5); itemLayer.addChild(s);
     const life = type === 'gold' ? 6000 : type === 'serum' || type === 'breeze' || type === 'immune' ? 8000 : Infinity;
     const it = { type, x: cand[k], y: cand[k + 1], s, born: gameTime, life, ph: Math.random() * 6.28, pop: 0, var: vr, infected: false };
@@ -550,7 +645,7 @@ function advance(d, g, tx, ty) {
 }
 function step() {
   stepCount++;
-  if (state === 'exiting') { advance(exitDir, false); vacated(px[prevLen - 1], py[prevLen - 1]); stepMovers(); stepViruses(); if (++exitSteps > len + 2) finishLevel(); return; }
+  if (state === 'exiting') { advance(exitDir, false); vacated(px[prevLen - 1], py[prevLen - 1]); stepMovers(); stepViruses(); if (mode === 'versus') mpSend(); if (++exitSteps > len + 2) finishLevel(); return; }
   if (mode === 'demo' || autoBot) dir = botDir();
   else if (queue.length) dir = queue.shift();
   const nx = bx[0] + DX[dir], ny = by[0] + DY[dir];
@@ -584,7 +679,8 @@ function step() {
   if (gameTime < breezeUntil) pullItems();
   stepMovers(); stepViruses();
   if (mode !== 'demo' && len >= 40) award('len40');
-  if (mode === 'demo' && len > 30) setupBoard(DEMO);
+  if (mode === 'demo' && len > (cfg.face ? 16 : 30)) setupBoard(DEMO);
+  if (mode === 'versus') mpSend();   // menüdeki sinüsler dar: akış kısa kalsın
 }
 function stepMovers() {
   for (const m of movers) {
@@ -618,7 +714,7 @@ function consume(it) {
   headPulse = 1;
   const tier = 1 + levelIdx;
   if (it.type === 'mucus') {
-    eaten += it.infected && mode === 'adventure' ? 2 : 1; grow += 2;   // virüslü mukus tıkanıklığı iki kat azaltır
+    eaten += it.infected && mode !== 'demo' ? 2 : 1; grow += 2;   // virüslü mukus tıkanıklığı iki kat azaltır
     combo = (gameTime - lastEat < COMBO_WINDOW) ? combo + 1 : 1; lastEat = gameTime;
     let pts = 10 * tier + (combo > 1 ? combo * 5 : 0);
     if (it.infected) {
@@ -628,11 +724,11 @@ function consume(it) {
     burst(cx, cy, 7, 0xC3CF3E); foam(cx, cy, 8, .6); sfx('eat');
     if (mode !== 'demo') award('first');
     if (combo >= 3 && combo % 3 === 0) {
-      boostUntil = gameTime + 1400; shake = REDUCED || mode === 'demo' ? 0 : 9; pts += 25 * tier;
+      boostUntil = gameTime + 1400; pts += 25 * tier;
       lv.sneezes++; gameSneezes++;
-      if (mode !== 'demo') { callout('Hapşırma refleksi!', 'Akış bir anlığına hızlandı'); if (gameSneezes >= 5) award('sneeze5'); }
-      sfx('sneeze'); burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 18, 0xF06AAE); petalBurst((bx[0] + .5) * cell, (by[0] + .5) * cell, 12);
-      if (mode !== 'demo') buzz(25);
+      if (mode !== 'demo') { callout('Hapşırma refleksi!', 'Akış bir anlığına hızlandı'); if (gameSneezes >= 5) award('sneeze5'); sneeze(dir); }
+      sfx('sneeze');
+      if (mode === 'demo') { burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 18, 0xF06AAE); petalBurst((bx[0] + .5) * cell, (by[0] + .5) * cell, 12); }
     }
     score += pts; if (mode !== 'demo') popup('+' + pts, cx, cy, 0xFFFFFF);
     removeItem(it);
@@ -640,9 +736,9 @@ function consume(it) {
     if (eaten >= target) { if (!exitOpen) openExit(); }
     else if (eaten + countType('mucus') < target) spawn('mucus');
     if (!exitOpen) {
-      if (!countType('gold') && Math.random() < cfg.gold) spawn('gold');
-      if (!countType('serum') && Math.random() < cfg.serum) spawn('serum');
-      if (!countType('breeze') && Math.random() < cfg.breeze) spawn('breeze');
+      if (!countType('gold') && rnd() < cfg.gold) spawn('gold');
+      if (!countType('serum') && rnd() < cfg.serum) spawn('serum');
+      if (!countType('breeze') && rnd() < cfg.breeze) spawn('breeze');
       maybeImmune();
     }
   } else if (it.type === 'gold') {
@@ -723,7 +819,7 @@ function virusHit(v) {
   const lost = Math.min(3, len - 4);
   if (lost > 0) { burst((bx[len - 1] + .5) * cell, (by[len - 1] + .5) * cell, 10, 0xF2683A); len -= lost; prevLen = Math.min(prevLen, len); }
   burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 18, 0xF2683A);
-  flashG.alpha = .22; shake = REDUCED || mode === 'demo' ? 0 : 6; sfx('hurt');
+  flashG.alpha = .22; if (mode !== 'demo') quake(.55); sfx('hurt');
   if (mode !== 'demo') buzz(30);
   callout('Virüse çarptın', 'Akış kısaldı. Virüsü mukusa yakalat');
   removeVirus(v); spawnVirus();          // virüs sekip uzağa savrulur
@@ -829,9 +925,10 @@ function botDir() {
 function die(reason) {
   deathReason = reason;
   if (mode === 'demo') { state = 'dying'; burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 20, 0xF06AAE); setTimeout(() => { if (mode === 'demo') { setupBoard(DEMO); state = 'demo'; } }, 700); return; }
-  state = 'dying'; flashG.alpha = .5; shake = REDUCED ? 0 : 14; sfx('die');
+  state = 'dying'; flashG.alpha = .5; quake(.85); sfx('die');
   burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 34, 0xFF4A6A);
   buzz(70);
+  if (mode === 'versus') return mpFinish(false);
   prog.best = Math.max(prog.best, score); save();
   setTimeout(() => {
     state = 'over';
@@ -848,6 +945,7 @@ function evalGoal([t, v], st) {
 }
 function finishLevel() {
   state = 'result'; cleared = true;
+  if (mode === 'versus') return mpFinish(true);
   const L = LEVELS[levelIdx];
   const st = { ...lv, time: Math.round((gameTime - levelStart) / 1000) };
   const got = [true, evalGoal(L.obj[0], st), evalGoal(L.obj[1], st)];
@@ -907,6 +1005,72 @@ function burst(x, y, n, color) {
     p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp; p.max = p.life = 350 + Math.random() * 380; p.size = cell * (.14 + Math.random() * .22);
   }
 }
+/* =========================================================================
+   KAMERA: sarsıntı her karede rastgele titreme değil; yaylı bir itiş ve yumuşak gürültü.
+   Hapşırma iki aşamalı: "ha..." (tahta bir an geri çekilip içe toplanır), ardından "hapşu!" (akışın yönünde güçlü itiş,
+   hafif büyüme ve dönme; yay birkaç salınımla yerine oturur), burundan öne püsküren damlacıklar ve genişleyen bir hava dalgası.
+   Çarpma ve ölüm: sönen bir sarsıntı (trauma). Hareket azaltılmışsa kamera kıpırdamaz.
+   ========================================================================= */
+const cam = { x: 0, y: 0, vx: 0, vy: 0, r: 0, vr: 0, z: 0, vz: 0, trauma: 0 };
+const CAM_W = 2 * Math.PI * 5.2, CAM_Z = .26, ZOOM_W = 2 * Math.PI * 6.5, ZOOM_Z = .38;   // yayın sıklığı (rad/sn) ve sönümü
+const SNEEZE_LEAD = 150;   // "ha..." ile "hapşu!" arası (ms); ses de aynı aralıkla çalar
+let sneezeAt = 0, sneezeDir = 0, pre = 0;   // pre: "ha..." sırasında geri çekilme (0..1)
+const waveG = new PIXI.Graphics(); fxLayer.addChild(waveG);
+let wave = null;
+function quake(t) { if (!REDUCED) cam.trauma = Math.min(1, cam.trauma + t); }
+function sneeze(d) {
+  sneezeDir = d; sneezeAt = performance.now() + SNEEZE_LEAD;
+}
+const PRE_PULL = .3, PRE_ZOOM = -.016;   // nefes alırken geri çekilme (hücre) ve içe toplanma
+function sneezeBlast() {
+  const d = sneezeDir, hx = (bx[0] + .5) * cell, hy = (by[0] + .5) * cell, side = Math.random() < .5 ? -1 : 1;
+  buzz(35);
+  if (!REDUCED) {   // geri çekilmiş yerden bırakılır, üstüne öne doğru itiş
+    cam.x -= DX[d] * cell * PRE_PULL; cam.y -= DY[d] * cell * PRE_PULL; cam.z += PRE_ZOOM; pre = 0;
+    cam.vx += DX[d] * cell * 44; cam.vy += DY[d] * cell * 44; cam.vz += 2; cam.vr += side * .9; quake(.32);
+    wave = { x: hx + DX[d] * cell * .6, y: hy + DY[d] * cell * .6, t: 0 };
+  }
+  spray(hx, hy, d, 26); petalBurst(hx, hy, 12); burst(hx, hy, 10, 0xF06AAE);
+}
+// hapşırma damlacıkları: başın önünde dar bir koni içinde hızla saçılır
+function spray(x, y, d, n) {
+  const a0 = Math.atan2(DY[d], DX[d]);
+  for (let k = 0; k < n; k++) {
+    const p = PARTS[partCursor = (partCursor + 1) % PARTS.length];
+    const a = a0 + (Math.random() - .5) * 1.1, sp = (.18 + Math.random() * .42) * cell;
+    p.s.visible = true; p.s.texture = T.dot; p.s.tint = Math.random() < .6 ? 0xFFFFFF : 0xD9F6EF; p.s.position.set(x, y); p.s.rotation = 0; p.vr = 0;
+    p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp; p.max = p.life = 380 + Math.random() * 360; p.size = cell * (.12 + Math.random() * .2);
+  }
+}
+const camNoise = (t, s) => Math.sin(t * 17.3 + s) * .55 + Math.sin(t * 29.1 + s * 2.3) * .3 + Math.sin(t * 47.7 + s * 3.1) * .15;
+function updateCamera(dt, now) {
+  if (sneezeAt) {
+    const k = 1 - (sneezeAt - now) / SNEEZE_LEAD;
+    if (k >= 1) { sneezeAt = 0; pre = 0; if (state === 'play' || state === 'exiting') sneezeBlast(); }
+    else if (!REDUCED) pre = Math.max(0, k) * Math.max(0, k);   // yavaşça başlayıp hızlanan nefes
+  }
+  for (let left = dt; left > 0; left -= 8) {   // yay küçük adımlarla: kare hızı düşse de aynı salınım
+    const h = Math.min(8, left) / 1000;
+    cam.vx += (-CAM_W * CAM_W * cam.x - 2 * CAM_Z * CAM_W * cam.vx) * h; cam.x += cam.vx * h;
+    cam.vy += (-CAM_W * CAM_W * cam.y - 2 * CAM_Z * CAM_W * cam.vy) * h; cam.y += cam.vy * h;
+    cam.vr += (-CAM_W * CAM_W * cam.r - 2 * CAM_Z * CAM_W * cam.vr) * h; cam.r += cam.vr * h;
+    cam.vz += (-ZOOM_W * ZOOM_W * cam.z - 2 * ZOOM_Z * ZOOM_W * cam.vz) * h; cam.z += cam.vz * h;
+  }
+  cam.trauma = Math.max(0, cam.trauma - dt * .0017);
+  const q = cam.trauma * cam.trauma, t = now / 1000;
+  const px0 = -DX[sneezeDir] * cell * PRE_PULL * pre, py0 = -DY[sneezeDir] * cell * PRE_PULL * pre;
+  const ox = cam.x + px0 + q * cell * .9 * camNoise(t, 1), oy = cam.y + py0 + q * cell * .9 * camNoise(t, 7), rot = cam.r + q * .03 * camNoise(t, 13);
+  board.pivot.set(boardW / 2, boardH / 2);
+  board.position.set(baseX + boardW / 2 + ox, baseY + boardH / 2 + oy);
+  board.rotation = rot; board.scale.set(1 + cam.z + PRE_ZOOM * pre);
+  // hava dalgası: başın önünden genişleyip söner
+  waveG.clear();
+  if (wave) {
+    wave.t += dt; const k = wave.t / 460;
+    if (k >= 1) wave = null;
+    else { const e = 1 - (1 - k) * (1 - k); waveG.circle(wave.x, wave.y, cell * (.6 + 6.5 * e)).stroke({ width: cell * (.42 - .3 * k), color: 0xFFFFFF, alpha: .55 * (1 - k) }); }
+  }
+}
 // taç yaprak yağmuru (çıkış, hapşırma)
 function petalBurst(x, y, n) {
   const c = skin.classic ? 0xF06AAE : skin.petal === -1 ? null : skin.petal;
@@ -957,13 +1121,13 @@ function callout(title, sub) {
 // Yer varsa tahtanın üstündeki şeritte; yoksa (yatay ekran) tahtanın üstünde, başın ve ostiumun uzağındaki bantta
 function placeCallout() {
   const gutter = baseX - Math.round(cell * .34) - 12;
-  const side = calloutBand < 60 && gutter >= 120;
-  calloutEl.style.left = side ? Math.round(baseX + boardW + cell * .34 + 6 + gutter / 2) + 'px' : '';
+  const side = mode !== 'versus' && calloutBand < 60 && gutter >= 120;
+  calloutEl.style.left = side ? Math.round(baseX + boardW + cell * .34 + 6 + gutter / 2) + 'px' : mode === 'versus' ? Math.round(viewR.x + viewR.w / 2) + 'px' : '';
   calloutEl.style.maxWidth = side ? Math.round(gutter - 8) + 'px' : '';
   calloutEl.classList.toggle('side', side);
   const h = calloutEl.offsetHeight;
   if (side) { calloutEl.style.top = Math.round(baseY + boardH * .3) + 'px'; return; }
-  if (calloutBand >= h + 4) { calloutEl.style.top = Math.round((calloutBand - h) / 2 + 2) + 'px'; return; }
+  if (calloutBand >= h + 4) { calloutEl.style.top = Math.round(viewR.y + (calloutBand - h) / 2 + 2) + 'px'; return; }   // şerit kendi alanının üstünde
   const hy = baseY + (by[0] + .5) * cell, gy = gateLayer.visible ? baseY + gateGlow.y : -1e9;
   const score = y => Math.abs(y + h / 2 - hy) - (Math.abs(y + h / 2 - gy) < cell * 4 ? 1e4 : 0);
   const top = baseY + boardH * .1, bottom = baseY + boardH * .72;
@@ -992,9 +1156,123 @@ function rgb(c) { return [(c >> 16) & 255, (c >> 8) & 255, c & 255]; }
 function mixc(a, b, t) { return ((a[0] + (b[0] - a[0]) * t) << 16) | ((a[1] + (b[1] - a[1]) * t) << 8) | (a[2] + (b[2] - a[2]) * t); }
 function hsl(h) { const f = n => { const k = (n + h * 12) % 12; return Math.round(255 * (.62 - .38 * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); }; return (f(0) << 16) | (f(8) << 8) | f(4); }
 const WHITE = [255, 255, 255], BOOSTC = rgb(0xF06AAE);
-const STEM = rgb(0x4BA85E), STEM_HI = rgb(0x9EDC8C), STEM_LINE = 0x1F5E33, WILT = rgb(0x9C8F96);
+const WILT = rgb(0x9C8F96);
 let skin = SKINS[0], skinBody = WHITE;
-let headRot = 0, headPulse = 0;
+let headRot = Math.PI, headFlip = 1, headFlipS = 1, headPulse = 0;
+
+/* Sıklamen yılanın taç yaprak rengi: çizimdeki pembe (PINK) görünümün rengine taşınır; ton kaydırılır, doygunluk ve
+   açıklık oranlanır, gölge/ışık farkı korunur. Yeşil ve sarı pikseller (yaprak, sap, başçıklar) değişmez. */
+const PINK = 0xF8157E;
+function toHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  if (!d) return [0, 0, l];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h / 6, s, l];
+}
+function fromHsl(h, s, l) {
+  const a = s * Math.min(l, 1 - l), f = n => { const k = (n + h * 12) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+  return [f(0), f(8), f(4)];
+}
+const yilanCache = {};
+// hueAt verilirse (gökkuşağı önizlemesi) ton soldan sağa değişir
+function yilanCanvas(name, petal, hueAt) {
+  const key = name + ':' + petal + (hueAt ? ':r' : '');
+  if (yilanCache[key]) return yilanCache[key];
+  const src = YI[name];
+  if (petal === PINK && !hueAt) return yilanCache[key] = src;
+  const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+  const x = c.getContext('2d'); x.drawImage(src, 0, 0);
+  const im = x.getImageData(0, 0, c.width, c.height), d = im.data;
+  const [h0, s0, l0] = toHsl(...rgb(PINK));
+  let [ht, st, lt] = toHsl(...rgb(petal)); lt = Math.min(lt, .86);   // beyaz bile gölgesini korusun
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    if (!d[i + 3] || r < g + 25 || b < g - 10) continue;   // yalnızca pembe/mor
+    let [h, s, l] = toHsl(r, g, b);
+    h = (h + (hueAt ? hueAt((i >> 2) % c.width / c.width) : ht) - h0 + 2) % 1; s = Math.min(1, s * st / s0);
+    l = l <= l0 ? l * lt / l0 : lt + (l - l0) * (1 - lt) / (1 - l0);
+    [d[i], d[i + 1], d[i + 2]] = fromHsl(h, s, l);
+  }
+  x.putImageData(im, 0, 0);
+  return yilanCache[key] = c;
+}
+const yilanTex = {};
+function yilanDoku(name, petal) { const key = name + ':' + petal; return yilanTex[key] || (yilanTex[key] = PIXI.Texture.from(yilanCanvas(name, petal))); }
+// gökkuşağı: 24 ton, çizimdeki pembenin doygunluğu ve açıklığıyla
+const RAINBOW = Array.from({ length: 24 }, (_, i) => { const [, s, l] = toHsl(...rgb(PINK)), [r, g, b] = fromHsl(i / 24, s, l); return (r << 16) | (g << 8) | b; });
+const petalOf = (ph, now) => skin.petal === -1 ? RAINBOW[Math.floor(((now * .0003 + ph) % 1) * 24)] : skin.petal;
+
+/* Gövde yolu: segment merkezlerinden geçen, köşeleri çeyrek eğriyle yuvarlatılmış çizgi. u = baştan uzaklık (segment
+   indeksi, hücre); segment i, u = i'de. Süsler de u ile yerleşir, böylece gövdeyle birlikte ilerler. */
+const PT = { x: 0, y: 0, tx: 1, ty: 0 };
+function pathAt(u) {
+  const n = len, X = i => (ix[i] + .5) * cell, Y = i => (iy[i] + .5) * cell;
+  if (u >= n - 1) {   // kuyruk ucunun ötesi: son yönde düz devam
+    const dx = X(n - 1) - X(n - 2), dy = Y(n - 1) - Y(n - 2), m = Math.hypot(dx, dy) || 1, e = (u - n + 1) * cell;
+    PT.tx = dx / m; PT.ty = dy / m; PT.x = X(n - 1) + PT.tx * e; PT.y = Y(n - 1) + PT.ty * e; return PT;
+  }
+  if (n < 3 || u < .5 || u > n - 1.5) {   // uçlarda düz parça (baştan ilk köşeye, son köşeden kuyruğa)
+    const j = n < 3 || u < .5 ? 0 : n - 2;
+    let ax = X(j), ay = Y(j), bx_ = X(j + 1), by_ = Y(j + 1), s = u - j;
+    if (n >= 3) {
+      if (j === 0) { bx_ = (ax + bx_) / 2; by_ = (ay + by_) / 2; s = u / .5; }
+      else { ax = (ax + bx_) / 2; ay = (ay + by_) / 2; s = (u - (n - 1.5)) / .5; }
+    }
+    const dx = bx_ - ax, dy = by_ - ay, m = Math.hypot(dx, dy) || 1;
+    PT.x = ax + dx * s; PT.y = ay + dy * s; PT.tx = dx / m; PT.ty = dy / m; return PT;
+  }
+  const i = Math.max(1, Math.min(n - 2, Math.round(u)));
+  const cx = X(i), cy = Y(i), ax = (X(i - 1) + cx) / 2, ay = (Y(i - 1) + cy) / 2, bx_ = (cx + X(i + 1)) / 2, by_ = (cy + Y(i + 1)) / 2;
+  const s = u - (i - .5), t = 1 - s;
+  PT.x = t * t * ax + 2 * t * s * cx + s * s * bx_; PT.y = t * t * ay + 2 * t * s * cy + s * s * by_;
+  let dx = t * (cx - ax) + s * (bx_ - cx), dy = t * (cy - ay) + s * (by_ - cy), m = Math.hypot(dx, dy);
+  if (m < 1e-6) { dx = bx_ - ax; dy = by_ - ay; m = Math.hypot(dx, dy) || 1; }
+  PT.tx = dx / m; PT.ty = dy / m; return PT;
+}
+// u0..u1 arasını şerit olarak örnekler; yarı genişlik hw(u) (px), doku boyunca 0..1
+function fillRope(mesh, u0, u1, hw) {
+  const g = mesh.geometry, steps = Math.max(1, Math.ceil((u1 - u0) / .2)), nv = (steps + 1) * 2;
+  if (mesh.cap < nv) {
+    mesh.cap = nv + 64;
+    g.positions = new Float32Array(mesh.cap * 2); g.uvs = new Float32Array(mesh.cap * 2);
+    const ind = new Uint32Array((mesh.cap / 2 - 1) * 6);
+    for (let k = 0, q = 0; k < mesh.cap / 2 - 1; k++, q += 6) { const a = k * 2; ind[q] = a; ind[q + 1] = a + 1; ind[q + 2] = a + 2; ind[q + 3] = a + 1; ind[q + 4] = a + 3; ind[q + 5] = a + 2; }
+    g.indices = ind;
+  }
+  const P = g.positions, U = g.uvs;
+  for (let k = 0; k <= steps; k++) {
+    const u = u0 + (u1 - u0) * k / steps, p = pathAt(u), w = hw(u), nx = -p.ty * w, ny = p.tx * w, o = k * 4, f = k / steps;
+    P[o] = p.x - nx; P[o + 1] = p.y - ny; P[o + 2] = p.x + nx; P[o + 3] = p.y + ny;
+    U[o] = f; U[o + 1] = 0; U[o + 2] = f; U[o + 3] = 1;
+  }
+  const last = steps * 4;   // kullanılmayan köşeler son noktaya toplanır: alanı sıfır üçgenler
+  for (let o = last + 4; o < mesh.cap * 2; o += 2) { if (P[o] === P[last] && P[o + 1] === P[last + 1]) break; P[o] = P[last]; P[o + 1] = P[last + 1]; }
+  g.getBuffer('aPosition').update(); g.getBuffer('aUV').update();
+}
+
+// Süsler (j: 0 yaprak, 1 tomurcuk, 2 yaprak, 3 sarkan tomurcuk). Çiçeğin hemen arkasında hep bir yaprak ve altında sarkan
+// küçük tomurcuk durur (başlangıçtaki kısa yılanda da); arkasından çizimdeki sıra (tomurcuk, yaprak, sarkan tomurcuk, yaprak)
+// PERIOD hücrede bir tekrarlanır. Sonrakiler ancak arkası kuyruğa değmeyecek kadar yer olunca açar.
+const DECO_TEX = ['yaprak1', 'tomurcuk', 'yaprak2', 'tomurcuk2'], PERIOD = 8.3;
+const DECO_BACK = YILAN.deco.map(d => (1 - d.ax) * d.size);
+const START = [[0, 1.75], [3, 2.45]];                      // [süs, baştan uzaklık (hücre)]
+const SHIFT = START[0][1] - YILAN.deco[0].u;                 // çizimdeki dizi ilk yaprağa göre öne çekilir
+const MODULE = [1, 2, 3, 0].map(j => [j, YILAN.deco[j].u + (j ? 0 : PERIOD) + SHIFT]);
+const decoAt = k => k < START.length ? START[k] : (([j, u]) => [j, u + Math.floor((k - START.length) / 4) * PERIOD])(MODULE[(k - START.length) % 4]);
+// çizimdeki boyutlara göre ölçek: baş (çiçek), süsler (yaprak/tomurcuk), süslerin gövdedeki aralığı, sap kalınlığı ve kuyruk boyu
+const YK = { head: .8, deco: .72, gap: 1, stem: .9, tail: .8 };
+function decoSprite(k) {
+  let d = DECOS[k];
+  if (!d) {
+    d = DECOS[k] = { s: new PIXI.Sprite(), g: k < START.length ? 1 : 0, flip: 1, f: 1, tex: '' };
+    const m = YILAN.deco[decoAt(k)[0]]; d.s.anchor.set(m.ax, m.ay); (m.back ? budLayer : decoLayer).addChildAt(d.s, 0);   // kuyruğa yakın olan altta
+  }
+  return d;
+}
+// çiçek ve süsler hep "yukarı" baksın: sap sağa giderken (çizimin tersi) dikeyde aynalanır; dikeyde son hâli korunur
+const flipFor = (cos, cur) => cos < -.3 ? -1 : cos > .3 ? 1 : cur;
 
 function renderSnake(alpha, dt, now) {
   for (let i = 0; i < len; i++) {
@@ -1003,62 +1281,61 @@ function renderSnake(alpha, dt, now) {
     ix[i] = fx + (bx[i] - fx) * alpha; iy[i] = fy + (by[i] - fy) * alpha;
   }
   const boosting = gameTime < boostUntil, hurt = gameTime < hurtUntil;
-  const flower = !skin.classic, rainbow = skin.petal === -1;
-  // segment arası ara noktalar: sap düz bir çizgi gibi görünsün diye sıklamende hücre başına 4, klasikte 2 top
-  const SUB = flower ? 4 : 2, n = (len - 1) * SUB, line = boosting ? 0x9C2E66 : hurt ? mixc(rgb(STEM_LINE), WILT, .5) : STEM_LINE;
-  let used = 0;
-  for (let k = n; k >= 1; k--) {
-    const i = Math.floor(k / SUB), f = k / SUB - i; let x = ix[i], y = iy[i];
-    if (f > 0) {
-      if (Math.abs(ix[i] - ix[i + 1]) + Math.abs(iy[i] - iy[i + 1]) > 1.5) continue;
-      x += (ix[i + 1] - x) * f; y += (iy[i + 1] - y) * f;
-    }
-    const t = k / (n + 1), s = bodySprite(used), X = (x + .5) * cell, Y = (y + .5) * cell;
-    const sz = cell * (flower ? .6 - .24 * t : .9 - .36 * t), w = .5 + .5 * Math.sin(now * .008 - k * .9 / SUB);
-    s.visible = true; s.position.set(X, Y); s.width = s.height = sz; s.rotation = 0; s.texture = flower ? T.dot : T.ball;
-    s.tint = boosting ? mixc(BOOSTC, WHITE, w * .4) : flower ? mixc(STEM, STEM_HI, w * .3) : mixc(skinBody, WHITE, w * .22);
-    if (flower) {
-      // toplar sapın yönünde biraz uzatılır: kenar tırtıksız, parlak şerit kesintisiz görünür
-      const o = stemLineSprite(used), h = stemHiSprite(used);
-      const a = i < len - 1 ? Math.atan2(iy[i] - iy[i + 1], ix[i] - ix[i + 1]) : Math.atan2(iy[i - 1] - iy[i], ix[i - 1] - ix[i]);
-      s.rotation = a; s.width = sz + cell * .2;
-      o.visible = h.visible = true; o.position.set(X, Y); o.rotation = a; o.width = sz + cell * .34; o.height = sz + cell * .14; o.tint = line;
-      h.position.set(X - sz * .1, Y - sz * .1); h.rotation = a; h.width = cell * .55; h.height = sz * .36; h.tint = boosting ? 0xFFE3F1 : mixc(STEM_HI, WHITE, w * .35);
-    }
-    used++;
-  }
-  for (let j = used; j < bodyPool.length; j++) bodyPool[j].visible = false;
-  for (let j = flower ? used : 0; j < stemLinePool.length; j++) stemLinePool[j].visible = stemHiPool[j].visible = false;
-  // her 3 segmentte bir, sırayla sağa sola açılan yaprak
-  let nl = 0;
-  if (flower) for (let i = 3; i < len - 1; i += 3) {
-    const tx = ix[i - 1] - ix[i + 1], ty = iy[i - 1] - iy[i + 1];
-    if (Math.abs(tx) + Math.abs(ty) > 3) continue;                      // ani konum değişimi
-    const s = leafSprite(nl++), side = (i / 3) & 1 ? 1 : -1, sz = cell * (1.5 - .55 * i / len);
-    s.visible = true; s.position.set((ix[i] + .5) * cell, (iy[i] + .5) * cell);
-    s.rotation = Math.atan2(ty, tx) + side * (Math.PI / 2 + .6) + Math.PI / 2 + Math.sin(now * .004 + i) * .12;
-    s.width = sz * .85; s.height = sz; s.tint = hurt ? mixc(WHITE, WILT, .5) : 0xffffff;
-  }
-  for (let j = nl; j < leafPool.length; j++) leafPool[j].visible = false;
-  // her 9 segmentte bir, sarkık tomurcuk; komşu yaprağın karşı tarafında
-  let nb = 0;
-  const budC = rainbow ? hsl((now * .0003 + .3) % 1) : skin.petal;
-  if (flower) for (let i = 5; i < len - 1; i += 9) {
-    const tx = ix[i - 1] - ix[i + 1], ty = iy[i - 1] - iy[i + 1];
-    if (Math.abs(tx) + Math.abs(ty) > 3) continue;
-    const b = budSprite(nb++), side = ((i + 1) / 3) & 1 ? -1 : 1, sz = cell * (1.6 - .4 * i / len);
-    b.visible = true; b.position.set((ix[i] + .5) * cell, (iy[i] + .5) * cell);
-    b.rotation = Math.atan2(ty, tx) + side * (Math.PI / 2 + .35) + Math.PI / 2 + Math.sin(now * .003 + i) * .1;
-    b.scale.set(side * sz / TS, sz / TS);
-    b.stem.tint = hurt ? mixc(WHITE, WILT, .5) : 0xffffff; b.head.tint = hurt ? mixc(rgb(budC), WILT, .55) : budC;
-  }
-  for (let j = nb; j < budPool.length; j++) budPool[j].visible = false;
-  tuber.visible = flower;
+  const flower = !skin.classic, wilt = hurt ? mixc(WHITE, WILT, .5) : 0xffffff;
+  const hx = (ix[0] + .5) * cell, hy = (iy[0] + .5) * cell;
+  headPulse = Math.max(0, headPulse - dt * .004);
+  stemMesh.visible = tailMesh.visible = decoLayer.visible = budLayer.visible = headFlower.visible = flower;
+  bodyLayer.visible = headBase.visible = headFace.visible = !flower;
   if (flower) {
-    const e = len - 1;
-    tuber.position.set((ix[e] + .5) * cell, (iy[e] + .5) * cell);
-    tuber.rotation = Math.atan2(iy[e - 1] - iy[e], ix[e - 1] - ix[e]) + Math.PI / 2;   // kökler geriye
-    tuber.width = tuber.height = cell * 1.2;
+    // sap baştan kuyruğa hafifçe incelir; kuyruk çizimdeki sivri uç, gövdenin son hücresini doldurur (kısa gövdede kısalır)
+    const sc = cell / YILAN.cell, uEnd = Math.max(1, len - 1) + .5, tailLen = Math.min(YILAN.tail.len * YK.tail, uEnd * .55), uTail = uEnd - tailLen;
+    const [h0, h1] = YILAN.stem.h, B = YILAN.stem.band * cell * YK.stem;
+    fillRope(stemMesh, 0, uTail + .05, u => B * (h0 + (h1 - h0) * Math.min(1, u / Math.max(uTail, .01))));
+    fillRope(tailMesh, uTail, uEnd, () => B * h1);
+    stemMesh.tint = tailMesh.tint = wilt;
+    let k = 0;
+    for (; ; k++) {
+      const [j, u0] = decoAt(k), u = u0 * YK.gap, start = k < START.length;
+      if (u >= (start ? uEnd : uTail)) break;
+      const d = decoSprite(k), p = pathAt(u), want = start || u + DECO_BACK[j] * YK.deco <= uTail + .1 ? 1 : 0;
+      d.g += (want - d.g) * Math.min(1, dt * .01);
+      d.flip = flipFor(p.tx, d.flip); d.f += (d.flip - d.f) * Math.min(1, dt * .012);
+      const pc = YILAN.deco[j].back ? petalOf(k * .17, now) : PINK, tex = DECO_TEX[j] + pc;
+      if (d.tex !== tex) { d.tex = tex; d.s.texture = yilanDoku(DECO_TEX[j], pc); }
+      d.s.visible = d.g > .02; d.s.position.set(p.x, p.y);
+      d.s.rotation = Math.atan2(p.ty, p.tx) + Math.sin(now * .003 + k * 1.7) * .05 * d.g;
+      d.s.scale.set(sc * YK.deco * d.g, sc * YK.deco * d.g * d.f); d.s.tint = wilt;
+    }
+    for (; k < DECOS.length; k++) { DECOS[k].s.visible = false; DECOS[k].g = 0; }
+    // çiçek ileri yöne döner, ağzı önde; yürürken hafifçe nefes alır, yiyince açılır
+    const vx = ix[0] - ix[1], vy = iy[0] - iy[1], mv = Math.abs(vx) + Math.abs(vy);
+    const target = mv > .05 && mv < 1.5 ? Math.atan2(vy, vx) : Math.atan2(DY[moveDir], DX[moveDir]);
+    headRot += Math.atan2(Math.sin(target - headRot), Math.cos(target - headRot)) * Math.min(1, dt * .025);
+    headFlip = flipFor(-Math.cos(headRot), headFlip); headFlipS += (headFlip - headFlipS) * Math.min(1, dt * .012);
+    const open = (boosting ? 1.12 : 1) * (hurt ? .88 : 1) * (1 + headPulse * .1), fl = Math.sin(now * .018) * .03;
+    headFlower.texture = yilanDoku('bas', petalOf(0, now));
+    headFlower.position.set(hx, hy); headFlower.rotation = headRot + Math.PI;
+    headFlower.scale.set(sc * YK.head * open * (1 + fl), sc * YK.head * open * (1 - fl * .6) * headFlipS);
+    headFlower.tint = wilt;
+  } else {
+    // klasik akış: toplardan gövde
+    const n = (len - 1) * 2;
+    let used = 0;
+    for (let k = n; k >= 1; k--) {
+      const i = Math.floor(k / 2), f = k / 2 - i; let x = ix[i], y = iy[i];
+      if (f > 0) {
+        if (Math.abs(ix[i] - ix[i + 1]) + Math.abs(iy[i] - iy[i + 1]) > 1.5) continue;
+        x += (ix[i + 1] - x) * f; y += (iy[i + 1] - y) * f;
+      }
+      const t = k / (n + 1), s = bodySprite(used++), w = .5 + .5 * Math.sin(now * .008 - k * .45);
+      s.visible = true; s.position.set((x + .5) * cell, (y + .5) * cell); s.width = s.height = cell * (.9 - .36 * t);
+      s.tint = boosting ? mixc(BOOSTC, WHITE, w * .4) : mixc(skinBody, WHITE, w * .22);
+    }
+    for (let j = used; j < bodyPool.length; j++) bodyPool[j].visible = false;
+    const lx = DX[moveDir] * cell * .1, ly = DY[moveDir] * cell * .08;
+    headBase.tint = skin.head; headBase.width = headBase.height = cell * 1.2; headBase.position.set(hx, hy);
+    headFace.position.set(hx + lx, hy + ly); headFace.width = headFace.height = cell * 1.2;
+    headFace.scale.x = Math.abs(headFace.scale.x) * (moveDir === 3 ? -1 : 1);
   }
   // yutulan virüs gövdede kuyruğa doğru ilerler, en eskisi en arkada
   for (let j = 0; j < carriedAt.length; j++) {
@@ -1069,30 +1346,6 @@ function renderSnake(alpha, dt, now) {
   }
   for (let j = carriedAt.length; j < lumpPool.length; j++) lumpPool[j].visible = false;
   snakeLayer.alpha = hurt ? (Math.sin(now * .04) > 0 ? 1 : .45) : 1;
-  const hx = (ix[0] + .5) * cell, hy = (iy[0] + .5) * cell;
-  const lx = DX[moveDir] * cell * .1, ly = DY[moveDir] * cell * .08;
-  headPetals.visible = headEye.visible = headAnther.visible = flower;
-  headPulse = Math.max(0, headPulse - dt * .004);
-  if (flower) {
-    // taç yapraklar boyundan başa giden yönün tersine savrulur
-    const vx = ix[0] - ix[1], vy = iy[0] - iy[1], m = Math.abs(vx) + Math.abs(vy);
-    const target = m > .05 && m < 1.5 ? Math.atan2(vy, vx) + Math.PI / 2 : Math.atan2(DY[moveDir], DX[moveDir]) + Math.PI / 2;
-    const d = Math.atan2(Math.sin(target - headRot), Math.cos(target - headRot));
-    headRot += d * Math.min(1, dt * .025);
-    const open = (boosting ? 1.16 : 1) * (hurt ? .84 : 1) * (1 + headPulse * .1), fl = Math.sin(now * .018) * .045;
-    const petalC = rainbow ? hsl((now * .0003) % 1) : skin.petal;
-    for (const s of [headPetals, headEye, headAnther]) {
-      s.position.set(hx, hy); s.rotation = headRot;
-      s.width = cell * 2.8 * open * (1 + fl); s.height = cell * 2.8 * open * (1 - fl * .6);
-    }
-    headPetals.tint = hurt ? mixc(rgb(petalC), WILT, .55) : petalC; headEye.tint = skin.eye;
-    headBase.tint = skin.disc; headBase.width = headBase.height = cell * 1.0;
-  } else {
-    headBase.tint = skin.head; headBase.width = headBase.height = cell * 1.2;
-  }
-  headBase.position.set(hx, hy);
-  headFace.position.set(hx + lx, hy + ly); headFace.width = headFace.height = cell * (flower ? 1.0 : 1.2);
-  headFace.scale.x = Math.abs(headFace.scale.x) * (moveDir === 3 ? -1 : 1);
 }
 
 function updateFx(dt, now) {
@@ -1120,7 +1373,7 @@ function updateFx(dt, now) {
     gateGlow.alpha = exitOpen ? .5 + .5 * p : .12 + .08 * p; gateRing.alpha = exitOpen ? 1 : .4; gateRing.rotation = exitOpen ? -now * .005 : -now * .0008;
   }
   // iltihap kızarıklığı oyun boyunca sabit (mukus topladıkça zemin açılmaz), yalnızca bölüm temizlenince kaybolur
-  const inflam = mode === 'adventure' && !cleared ? .3 : 0;
+  const inflam = mode !== 'demo' && !cleared ? .3 : 0;
   inflamG.alpha += (inflam - inflamG.alpha) * (cleared ? 1 - Math.exp(-dt * .004) : ek);
   if (cfg.shape) {   // şekilli bölümde kızarıklık ekranın tamamına değil yalnız sinüsün zeminine
     const k = Math.min(1, inflamG.alpha / .3), g = Math.round(255 - 95 * k), b = Math.round(255 - 85 * k);
@@ -1148,8 +1401,7 @@ function updateFx(dt, now) {
   }
   for (const p of POPS) { if (p.life <= 0) continue; p.life -= dt; p.t.y -= dt * .045 * (cell / 24); p.t.alpha = Math.min(1, p.life / 300); if (p.life <= 0) p.t.visible = false; }
   if (flashG.alpha > 0) flashG.alpha = Math.max(0, flashG.alpha - dt * .0011);
-  if (shake > 0) { shake = Math.max(0, shake - dt * .035); board.position.set(baseX + (Math.random() - .5) * shake, baseY + (Math.random() - .5) * shake); }
-  else if (board.x !== baseX || board.y !== baseY) board.position.set(baseX, baseY);
+  updateCamera(dt, now);
   if (!REDUCED) {
     const W = app.screen.width, H = app.screen.height;
     for (const p of PETALS) {
@@ -1168,7 +1420,8 @@ setFps(fpsOn);
 // simülasyon çizimden ayrı: denge testi aynı fonksiyonu çizimsiz hızlı çalıştırır
 function simTick(dt) {
   let alpha = 1;
-  if (!running()) return alpha;
+  if (!running() || frozen) return alpha;
+  if (waiting) { if (!autoBot) return alpha; go(); }   // denge testinde bot beklemeden başlar
   gameTime += dt; acc += dt;
   let sd = stepDur(), n = 0;
   while (acc >= sd && n < 4) { acc -= sd; step(); n++; if (!running()) break; sd = stepDur(); }
@@ -1188,6 +1441,7 @@ app.ticker.add((tk) => {
   renderSnake(running() ? alpha : 1, dt, now);
   for (const m of movers) { const a = running() ? alpha : 1; m.s.position.set((m.px + (m.x - m.px) * a + .5) * cell, (m.py + (m.y - m.py) * a + .5) * cell + Math.sin(now * .008 + m.ph) * cell * .04); m.s.width = m.s.height = cell * 1.1; m.s.scale.x = Math.abs(m.s.scale.x) * (m.dx < 0 ? -1 : 1); }
   renderViruses(running() ? alpha : 1, dt, now);
+  if (mode === 'versus') mpRender(dt, now);
   updateFx(dt, now);
   updateInside(dt, now);
   if ((chipAcc += dt) > 100) { chipAcc = 0; updateChips(); }
@@ -1203,6 +1457,7 @@ app.ticker.add((tk) => {
 function pushDir(d) {
   if (state !== 'play') return;
   hideHint();
+  if (waiting) { go(); if (d === dir || d === (dir + 2) % 4) return; }   // ilk dokunuş başlatır; geriye (gövdeye) doğruysa akış yukarı gider
   const last = queue.length ? queue[queue.length - 1] : dir;
   if (d === last || d === (last + 2) % 4) return;
   if (queue.length < 3) queue.push(d);
@@ -1242,7 +1497,7 @@ function show(id) {
 }
 let lastScore = -1;
 function hudScore() { if (score !== lastScore) { $('hudScore').textContent = score; lastScore = score; } }
-function hudLevel() { $('hudLevel').textContent = `${levelIdx + 1}. ${cfg.name}`; }
+function hudLevel() { $('hudLevel').textContent = mode === 'versus' ? `${mp.round}. tur · ${cfg.name}` : `${levelIdx + 1}. ${cfg.name}`; }
 function hudBar() {
   const fill = $('hudFill'), lab = $('hudBarLabel');
   if (exitOpen) { fill.classList.add('open'); fill.style.transform = 'scaleX(1)'; lab.textContent = 'Ostium açık'; return; }
@@ -1263,10 +1518,10 @@ function setMute() { $('muteWave').style.display = prog.muted ? 'none' : ''; $('
 function hideHint() { if ($('hint').classList.contains('on')) { $('hint').classList.remove('on'); prog.seenTut = true; save(); } }
 
 function homeStats() {
-  $('hsBadgesTotal').textContent = BADGES.length; $('hsStarsTotal').textContent = LEVELS.length * 3;
-  $('hsStars').textContent = totalStars(); $('hsBadges').textContent = BADGES.filter(b => prog.badges[b[0]]).length; $('hsBest').textContent = prog.best;
+  $('hsStarsTotal').textContent = LEVELS.length * 3;
+  $('hsStars').textContent = totalStars(); $('hsBest').textContent = prog.best;
 }
-function goHome() { mode = 'demo'; setupBoard(DEMO); state = 'demo'; homeStats(); show('scrHome'); musicScene('menu'); musicDuck(false); }
+function goHome() { mode = 'demo'; rnd = Math.random; mpClear(); applySkin(0); document.body.classList.remove('versus'); setupBoard(DEMO); state = 'demo'; homeStats(); show('scrHome'); layout(); musicScene('menu'); musicDuck(false); }
 
 function legendKeys(c) {
   const k = ['mucus'];
@@ -1303,38 +1558,24 @@ function openIntro(i, base = 0) {
   hudLevel(); hudScore(); hudBar(); show('scrIntro');
 }
 function begin() {
-  initAudio(); show(null); state = 'play'; levelStart = gameTime;
-  if (mode === 'adventure' && levelIdx === 0 && !prog.seenTut) {
-    $('hintText').textContent = matchMedia('(pointer: coarse)').matches ? 'Yön vermek için kaydır' : 'Yön vermek için ok tuşlarını ya da WASD\'yi kullan';
-    $('hint').classList.add('on');
-  }
+  initAudio(); show(null); state = 'play'; levelStart = gameTime; acc = 0;
+  waiting = mode === 'adventure';
+  if (!waiting) return;
+  const touch = matchMedia('(pointer: coarse)').matches;
+  $('hintText').textContent = levelIdx === 0 && !prog.seenTut
+    ? (touch ? 'Yön vermek için kaydır' : 'Yön vermek için ok tuşlarını ya da WASD\'yi kullan')
+    : (touch ? 'Başlamak için kaydır' : 'Başlamak için bir yön tuşuna bas');
+  $('hint').classList.add('on');
 }
+// ilk yön verildi: süre ve hızlanma buradan sayılır
+function go() { waiting = false; levelStart = gameTime; acc = 0; hideHint(); }
 function newRun() { initAudio(); openIntro(0); begin(); }
 function togglePause(force) {
+  if (mode === 'versus') return;   // çevrim içi tur herkes için aynı anda akar
   if (state === 'play' || state === 'exiting') { pausedFrom = state; state = 'paused'; show('scrPause'); musicDuck(true); }
   else if (state === 'paused' && force !== true) { state = pausedFrom; show(null); musicDuck(false); }
 }
 
-let tab = 'skins';
-function openCollect(t) {
-  if (t) tab = t;
-  document.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === tab));
-  const ts = totalStars(), body = $('collectBody');
-  if (tab === 'skins') {
-    body.innerHTML = `<p>Yıldız topladıkça yeni görünümler açılır. Şu an <b>${ts}</b> yıldızın var.</p><div class="grid">` + SKINS.map((s, i) => {
-      const lock = ts < s.need, sw = `<img class="prev" alt="" src="${skinPreview(i)}">`;
-      return `<button class="skin" data-skin="${i}" aria-pressed="${prog.skin === i}" ${lock ? 'disabled' : ''}>${sw}<b>${s.name}</b><span>${lock ? `${s.need} yıldızda açılır` : prog.skin === i ? 'Seçili' : 'Seçmek için dokun'}</span></button>`;
-    }).join('') + '</div>';
-    body.querySelectorAll('.skin').forEach(b => b.onclick = () => { prog.skin = +b.dataset.skin; save(); applySkin(); openCollect(); });
-  } else if (tab === 'badges') {
-    body.innerHTML = '<div class="grid">' + BADGES.map(([id, em, nm, ds]) => `<div class="badge ${prog.badges[id] ? '' : 'lock'}"><span class="em">${em}</span><b>${nm}</b><span>${ds}</span></div>`).join('') + '</div>';
-  } else {
-    body.innerHTML = '<div class="facts">' + `<div class="fact"><div class="em">🤝</div><div><strong>Unutma</strong><p>${CLOSING}</p></div></div>` + FACTS.map(([em, tx], i) => prog.facts[i]
-      ? `<div class="fact"><div class="em">${em}</div><div><strong>${LEVELS[i].name}</strong><p>${tx}</p></div></div>`
-      : `<div class="fact lock"><div class="em">🔒</div><div><strong>${LEVELS[i].name}</strong><p>Bu bölümü bitirince açılır.</p></div></div>`).join('') + '</div>';
-  }
-  show('scrCollect');
-}
 // Bilgilendirme: antibiyotik ve sinüzit (sitenin metinleri, kaynaklarıyla) ve nasıl oynanır
 let infoTab = 'learn';
 function openInfo(t) {
@@ -1356,36 +1597,14 @@ function openInfo(t) {
 }
 document.querySelectorAll('[data-info]').forEach(b => b.onclick = () => openInfo(b.dataset.info));
 
-// koleksiyon kartı için başın küçük resmi (oyundaki dokulardan)
-const previewCache = {};
-function skinPreview(i) {
-  if (previewCache[i]) return previewCache[i];
-  const s = SKINS[i], [c, x] = cnv(), hex = v => '#' + v.toString(16).padStart(6, '0');
-  const tinted = (src, fill) => { const [t, tx] = cnv(); tx.drawImage(src, 0, 0); tx.globalCompositeOperation = 'multiply'; tx.fillStyle = typeof fill === 'function' ? fill(tx) : fill; tx.fillRect(0, 0, TS, TS); tx.globalCompositeOperation = 'destination-in'; tx.drawImage(src, 0, 0); return t; };
-  const mid = (src, k) => x.drawImage(src, TS * (1 - k) / 2, TS * (1 - k) / 2, TS * k, TS * k);
-  if (s.classic) { mid(tinted(C.ball, hex(s.head)), .9); mid(C.face, .9); }
-  else {
-    let pf = hex(s.petal);
-    if (s.petal === -1) pf = g => { const lg = g.createLinearGradient(0, 0, TS, TS); ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#c77dff'].forEach((col, k) => lg.addColorStop(k / 4, col)); return lg; };
-    // baş sol üstte, taç yaprakları sağ alta savrulur; oranlar oyundakiyle aynı (disk = baş dokusunun 1/2,8'i)
-    const k = 1.05, hc = TS * .32;
-    x.save(); x.translate(hc, hc); x.rotate(-Math.PI / 4); x.scale(k, k); x.translate(-TS / 2, -HEAD_Y);
-    x.drawImage(tinted(C.petals, pf), 0, 0); x.drawImage(tinted(C.eye, hex(s.eye)), 0, 0); x.drawImage(C.anther, 0, 0); x.restore();
-    const d = TS * k / 2.8, o = hc - d / 2;
-    x.drawImage(tinted(C.ball, hex(s.disc)), o, o, d, d); x.drawImage(C.face2, o, o, d, d);
-  }
-  return previewCache[i] = c.toDataURL();
-}
-function applySkin() {
-  skin = SKINS[prog.skin] || SKINS[0]; skinBody = skin.classic ? rgb(skin.body) : WHITE;
-  headFace.texture = skin.classic ? T.face : T.face2;
+// görünüm seçimi (koleksiyon) kaldırıldı: akış hep ilk görünümle çizilir; diğerleri yalnızca görünüm denetiminde (#debug)
+function applySkin(i = 0) {
+  skin = SKINS[i] || SKINS[0]; skinBody = skin.classic ? rgb(skin.body) : WHITE;
 }
 
 // ilk kez oynayan doğrudan oyuna girer; sonrakilerde 1. bölümün tanıtımı
 $('btnAdventure').onclick = () => { initAudio(); if (!prog.done[0]) newRun(); else openIntro(0); };
 $('btnInfo').onclick = () => openInfo();
-$('btnCollect').onclick = () => openCollect();
-document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => openCollect(b.dataset.tab));
 document.querySelectorAll('[data-back]').forEach(b => b.onclick = goHome);
 $('btnStart').onclick = begin;
 $('btnNext').onclick = () => { if (levelIdx < LEVELS.length - 1) openIntro(levelIdx + 1, score); else goHome(); };
@@ -1465,20 +1684,380 @@ function renderBoard() {
 $('btnBoard').onclick = () => openBoard();
 $('btnBoardNext').onclick = () => { const f = boardThen; boardThen = null; if (f) f(); };
 
-document.addEventListener('visibilitychange', () => { if (document.hidden) togglePause(true); audioHidden(document.hidden); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) togglePause(true); audioHidden(document.hidden);
+  // çevrim içi: sekme arka plandayken bu cihazda oyun donar (tarayıcı çizimi durdurur); odadakiler haberdar olur ve oynamaya devam eder
+  if (mp.code && net.open) {
+    mp.away[mp.you] = document.hidden; net.send({ t: 'away', on: document.hidden });
+    if (!document.hidden && mode === 'versus' && (state === 'play' || state === 'exiting')) callout('Oyuna döndün', 'Akış kaldığı yerden sürüyor');
+    if (mode === 'versus') mpRoundOver();
+  }
+});
 // tarayıcı sesi ancak bir dokunuştan sonra açar: ilk dokunuşta ya da tuşta müzik başlar
 for (const t of ['pointerdown', 'keydown']) addEventListener(t, () => initAudio(), true);
 addEventListener('blur', () => togglePause(true));
 
+
+/* =========================================================================
+   ÇOK OYUNCULU (ÇEVRİM İÇİ): oda kodu ile 2-3 oyuncu, her biri kendi cihazından.
+   Ekran oyunculara bölünür: kendi tahtan solda (dikey telefonda altta), diğerlerininki yanında canlı izlenir.
+   Herkes aynı bölümü aynı tohumla aynı anda başlatır; mukusu temizleyip ostiumdan ilk çıkan turu kazanır.
+   Akış takılan turun dışında kalır, diğerlerini izler. Puan: 1. 3, 2. 2, 3. 1 puan; bitiremeyen 0.
+   Her cihaz kendi oyununu oynatır; ağdan yalnızca diğerlerinin akışı, nesneleri ve ilerlemesi gelir.
+   ========================================================================= */
+const MP_COLORS = [0xF8157E, 0xA066D6, 0x1FB5A0], MP_CSS = ['#F8157E', '#A066D6', '#1FB5A0'], MP_SKIN = [0, 3, 7];   // görünümler: Magenta, Mor, Turkuaz
+const mp = { code: '', you: 0, host: 0, players: [], round: 0, level: 0, totals: {}, fins: {}, ranks: {}, away: {}, over: false, views: new Map(), boxes: new Map(), sentAt: 0, timers: [] };
+const me = () => mp.players.find(p => p.id === mp.you);
+const others = () => mp.players.filter(p => p.id !== mp.you);
+
+/* Kartların yerleşimi. Dönen: [kendi kartın, diğer oyuncular...] (cell: hücre boyu, hd: kartın üstündeki ad/skor şeridi).
+   Bilgisayar ve tablet: sahne ekranı kaplamaz; eşit kartlar aralarında ve çevrelerinde boşlukla ortalanır (en çok %86 x %90).
+   Telefon: kendi tahtan tek oyunculudakine yakın boyda olsun diye önce o yerleşir (kenar boşluğu 6 px), rakipler kalan yere:
+   dikeyde üstte yan yana, yatayda yanında. Rakip tahtası en az MIN_CELL hücre boyunda kalır. */
+const CARD_BG = 0x8A2F52, MIN_CELL = 3;
+function mpRects(W, H) {
+  const n = Math.max(2, mp.players.length), k = n - 1, phone = Math.min(W, H) < 520;
+  const CW = COLS + (phone ? .6 : 1.4), CH = ROWS + (phone ? .5 : 1);   // kartın tahta çevresindeki payı (hücre)
+  const m = phone ? 6 : Math.round(Math.max(10, Math.min(W, H) * .03)), g = phone ? 6 : Math.round(Math.max(8, Math.min(18, W * .014)));
+  const hd = c => { const w = c * CW; return w >= 300 ? (phone ? 56 : 62) : w >= 171 ? 54 : 46; };   // ad + skor satırı ve tıkanıklık çubuğu (style.css .opp eşikleri)
+  const aw = phone ? W - 2 * m : Math.min(W - 2 * m, W * .86), ah = phone ? H - 2 * m : Math.min(H - 2 * m, H * .9);
+  const card = (x, y, c) => { const w = Math.round(c * CW), h = Math.round(c * CH) + hd(c); return { x: Math.round(x), y: Math.round(y), w, h, cell: c, hd: hd(c), rad: Math.round(Math.max(phone ? 10 : 12, Math.min(26, w * .07))) }; };
+  const fitRow = (j, w, h) => { let c = Math.min((w - (j - 1) * g) / j / CW, (h - 34) / CH); c = Math.min(c, (h - hd(c)) / CH); return c; };
+  const row = cards => {   // kartları yan yana, dikeyde ortalı diz
+    const total = cards.reduce((t, r) => t + r.w, 0) + (cards.length - 1) * g; let x = (W - total) / 2;
+    for (const r of cards) { r.x = Math.round(x); r.y = Math.round((H - r.h) / 2); x += r.w + g; }
+    return cards;
+  };
+  if (!phone) {
+    const c = Math.floor(fitRow(n, aw, ah));
+    if (W >= H * .95 || c >= 10) return row(Array.from({ length: n }, () => card(0, 0, c)));
+  } else if (W >= H) {   // yatay telefon: kendi kartın yüksekliği doldurur, rakipler yanında
+    let cb = Math.floor(Math.min((ah - 54) / CH, (aw - k * (g + MIN_CELL * CW)) / CW));
+    const cs = Math.min(cb, (aw - cb * CW - k * g) / k / CW, (ah - 46) / CH);
+    return row([card(0, 0, cb), ...Array.from({ length: k }, () => card(0, 0, cs))]);
+  }
+  // dikey: kendi kartın altta büyük, rakipler üstte yan yana
+  let cb = Math.floor(Math.min(aw / CW, (ah - hd(14)) / CH)), cs = 0;
+  for (; cb > 6; cb--) {
+    const left = ah - (cb * CH + hd(cb)) - g;
+    cs = fitRow(k, aw, left);
+    if (cs >= (phone ? MIN_CELL : cb * .42)) break;
+  }
+  cs = Math.max(MIN_CELL, Math.min(cs, cb * .6));
+  const big = card(0, 0, cb), sw = Math.round(cs * CW), sh = Math.round(cs * CH) + hd(cs), rowW = k * sw + (k - 1) * g;
+  const y0 = (H - (sh + g + big.h)) / 2, xs = (W - rowW) / 2;
+  big.x = Math.round((W - big.w) / 2); big.y = Math.round(y0 + sh + g);
+  return [big, ...Array.from({ length: k }, (_, i) => card(xs + i * (sw + g), y0, cs))];
+}
+const ITEM_TEX = { m: () => T.mucus[0], i: () => T.infected[0], gold: () => T.gold, serum: () => T.serum, breeze: () => T.breeze, immune: () => T.immune };
+function mpView(p) {
+  let v = mp.views.get(p.id); if (v) return v;
+  const c = new PIXI.Container(), shadow = new PIXI.Graphics(), bg = new PIXI.Graphics(), floor = new PIXI.Sprite(), plugs = new PIXI.Container(), things = new PIXI.Container(), stem = new PIXI.Graphics(), head = new PIXI.Sprite(), mask = new PIXI.Graphics();
+  head.anchor.set(YILAN.head.ax, YILAN.head.ay);
+  c.addChild(bg, floor, plugs, things, stem, head); oppLayer.addChild(shadow, c);   // maske yok: telefonda her maske ayrı bir çizim geçişi
+  const tag = mpBox(p.id).tag;
+  v = { id: p.id, c, shadow, bg, floor, plugs, things, stem, head, mask, tag, tex: null, pool: [], cells: [], prev: [], at: 0, dur: 150, rot: -Math.PI / 2, flip: 1, eaten: 0, target: 1, open: false, cell: 10, ox: 0, oy: 0 };
+  mp.views.set(p.id, v); return v;
+}
+// her oyuncunun sütununda DOM katmanı: üstte ad etiketi, ortada tur sonu yazısı (bitirdi / takıldı)
+function mpBox(id) {
+  let b = mp.boxes.get(id); if (b) return b;
+  const box = document.createElement('div'), tag = document.createElement('div'), msg = document.createElement('div');
+  box.className = 'col' + (id === mp.you ? ' self' : ''); tag.className = 'opp'; msg.className = 'colmsg';
+  box.append(tag, msg); $('opps').appendChild(box);
+  b = { box, tag, msg }; mp.boxes.set(id, b); return b;
+}
+function place(el, r, color) {
+  Object.assign(el.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', borderRadius: r.rad + 'px' });
+  el.style.setProperty('--hd', r.hd + 'px'); el.style.setProperty('--pc', MP_HEAD[color]);   // CSS değişkenleri yalnızca setProperty ile yazılır
+}
+const MP_HEAD = ['#D0106C', '#8550C4', '#138F80'];   // başlık şeridi: oyuncu renginin beyaz yazıyı taşıyan koyu tonu
+function mpLayout(W, H) {
+  const rects = mpRects(W, H), list = others();
+  for (const [id, v] of mp.views) if (!list.some(p => p.id === id)) mpDrop(id);
+  for (const id of [...mp.boxes.keys()]) if (!mp.players.some(p => p.id === id)) { mp.boxes.get(id).box.remove(); mp.boxes.delete(id); }
+  const mine = me();
+  if (mine) { const b = mpBox(mine.id); place(b.box, rects[0], mine.color); mpSelfHead(); mpMark(mine.id); mpSelfRim(); }
+  list.forEach((p, i) => {
+    const r = rects[i + 1], v = mpView(p);
+    if (!r) { v.c.visible = v.shadow.visible = false; return; }
+    v.c.visible = true;
+    v.cell = r.cell;
+    v.ox = r.x + (r.w - COLS * v.cell) / 2; v.oy = r.y + r.hd + (r.h - r.hd - ROWS * v.cell) / 2;
+    v.shadow.clear().roundRect(r.x, r.y + 6, r.w, r.h, r.rad).fill({ color: 0x6E2A4A, alpha: .22 }); v.shadow.visible = true;
+    v.bg.clear().roundRect(r.x, r.y, r.w, r.h, r.rad).fill(CARD_BG).roundRect(r.x + 1.5, r.y + 1.5, r.w - 3, r.h - 3, r.rad).stroke({ width: 3, color: MP_COLORS[p.color] });
+    if (cfg.shape) {   // aynı bölümün zemini, bu sütuna göre
+      const res = app.renderer.resolution, cv = sinusCanvas(v.cell * res, (v.ox - r.x) * res, (v.oy - r.y) * res, Math.ceil(r.w * res), Math.ceil(r.h * res));
+      { const x = cv.getContext('2d'); x.globalCompositeOperation = 'destination-in'; x.beginPath(); x.roundRect(0, 0, cv.width, cv.height, r.rad * res); x.fill(); }   // kartın köşeleri
+      if (v.tex) v.tex.destroy(true);
+      v.floor.texture = v.tex = new PIXI.Texture({ source: new PIXI.CanvasSource({ resource: cv }) });
+      v.floor.position.set(r.x, r.y); v.floor.width = r.w; v.floor.height = r.h;
+      // kapalı ostium: tıkaç hücreleri, ostium açılınca kalkar
+      v.plugs.removeChildren().forEach(o => o.destroy());
+      cfg.shape.grid.forEach((row, y) => { for (let x = 0; x < COLS; x++) if (row[x] === '=') {
+        const s = new PIXI.Sprite(T.swell); s.anchor.set(.5); s.tint = 0xFFD2B4; s.rotation = ((y * COLS + x) * 1.7) % 6.28;
+        s.position.set(v.ox + (x + .5) * v.cell, v.oy + (y + .5) * v.cell); s.width = s.height = v.cell * 1.3; v.plugs.addChild(s);
+      } });
+    }
+    place(mpBox(p.id).box, r, p.color);
+    mpTag(p); mpMark(p.id);
+  });
+}
+function mpDrop(id) {
+  const v = mp.views.get(id); if (!v) return;
+  v.c.destroy({ children: true }); v.shadow.destroy(); if (v.tex) v.tex.destroy(true); mp.views.delete(id);
+  const b = mp.boxes.get(id); if (b) { b.box.remove(); mp.boxes.delete(id); }
+}
+function mpClear() {
+  for (const id of [...mp.views.keys()]) mpDrop(id);
+  for (const b of mp.boxes.values()) b.box.remove(); mp.boxes.clear();
+  for (const t of mp.timers) clearTimeout(t); mp.timers = [];
+}
+// kart başlığı: solda ad, sağda skor; altında tıkanıklık çubuğu (yazısı içinde). Değişmedikçe yeniden yazılmaz
+function mpHead(el, p, name, score, eaten, target, open) {
+  const f = mp.fins[p.id], r = Math.max(0, 1 - eaten / Math.max(1, target)), away = !f && mp.away[p.id];
+  const note = f ? (f.ok ? `Ostiumdan çıktı · ${secs(f.time)} sn` : 'Akış takıldı') : away ? 'Ara verdi' : open ? 'Ostium açık' : `Tıkanıklık %${Math.round(r * 100)}`;
+  const short = f ? (f.ok ? `Çıktı · ${secs(f.time)}` : 'Takıldı') : away ? 'Ara' : open ? 'Açık' : `%${Math.round(r * 100)}`;   // çok dar kart
+  const fill = f ? (f.ok ? 1 : r) : open ? 1 : r, done = (f && f.ok) || open;
+  const html = `<div class="hl"><b>${esc(name)}</b><em>${score}</em></div>`
+    + `<div class="pb${done ? ' open' : ''}"><i style="transform:scaleX(${fill.toFixed(3)})"></i><span class="lg">${note}</span><span class="sm">${short}</span></div>`;
+  if (el._h !== html) { el._h = html; el.innerHTML = html; }
+}
+function mpTag(p) {
+  const v = mp.views.get(p.id); if (!v) return;
+  mpHead(v.tag, p, p.name, v.score || 0, v.eaten, v.target, v.open);
+}
+// kendi kartının kenarı senin renginde
+function mpSelfRim() {
+  const R = viewR, mine = me(); if (mode !== 'versus' || !R.rad) return;
+  rimG.clear().roundRect(R.x - baseX + 1.5, R.y - baseY + 1.5, R.w - 3, R.h - 3, R.rad).stroke({ width: 3, color: MP_COLORS[mine ? mine.color : 0] });
+}
+let selfKey = '';
+function mpSelfHead() {
+  const mine = me(), b = mine && mp.boxes.get(mine.id); if (!b) return;
+  const key = `${score}|${eaten}|${target}|${exitOpen}|${!!mp.fins[mine.id]}`;
+  if (key === selfKey && b.tag._h) return; selfKey = key;
+  mpHead(b.tag, mine, 'Sen', score, eaten, target, exitOpen);
+}
+// tur sonu yazısı: oyuncu ostiumdan çıkınca ya da akışı takılınca kendi sütununun ortasında
+const MEDAL = ['🥇', '🥈', '🥉'], secs = t => String(t).replace('.', ',');
+function mpMark(id) {
+  const b = mp.boxes.get(id), f = mp.fins[id]; if (!b) return;
+  const v = mp.views.get(id); if (v) v.drawn = -1;
+  const away = !f && !!mp.away[id] && id !== mp.you;
+  b.box.classList.toggle('done', !!f && f.ok); b.box.classList.toggle('dead', !!f && !f.ok); b.box.classList.toggle('away', away);
+  if (away) { b.msg.innerHTML = `<span class="md">⏸️</span><b>Ara verdi</b><span>Oyundan ayrıldı · sen devam et</span>`; return; }
+  if (!f) { b.msg.innerHTML = ''; return; }
+  const self = id === mp.you, r = mp.ranks[id];
+  b.msg.innerHTML = f.ok
+    ? `<span class="md">${MEDAL[r - 1] || '🏁'}</span><b>${self ? 'Ostiumdan çıktın!' : 'Ostiumdan çıktı!'}</b><span>${r}. sıra · ${secs(f.time)} sn</span>`
+    : `<span class="md">😵</span><b>Akış takıldı</b><span>${self ? 'Bu turun dışındasın' : 'Bu turun dışında'}</span>`;
+}
+// kendi durumunu odaya bildir (her adımda, en sık 60 ms'de bir)
+function mpSend(force) {
+  const now = performance.now(); if (!force && now - mp.sentAt < 60) return; mp.sentAt = now;
+  const c = []; for (let i = 0; i < len; i++) c.push(bx[i], by[i]);
+  const it = items.map(o => [o.type === 'mucus' ? (o.infected ? 'i' : 'm') : o.type, o.x, o.y]);
+  const vs = []; for (const v of viruses) vs.push(v.x, v.y);
+  net.send({ t: 'st', c, it, v: vs, e: eaten, T: target, s: score, d: Math.round(stepDur()), x: exitOpen ? 1 : 0 });
+}
+function mpState(m) {
+  const p = mp.players.find(q => q.id === m.from); if (!p || !Array.isArray(m.c)) return;
+  const v = mpView(p);
+  v.prev = v.cells.length ? v.cells : m.c; v.cells = m.c; v.at = performance.now(); v.dur = Math.max(40, Math.min(400, m.d | 0));
+  v.eaten = m.e | 0; v.target = Math.max(1, m.T | 0); v.open = !!m.x; v.score = m.s | 0;
+  // nesneler ve virüsler
+  const want = [...(m.it || []).map(([k, x, y]) => [ITEM_TEX[k] ? ITEM_TEX[k]() : T.mucus[0], x, y, 1.45]), ...[...Array(((m.v || []).length / 2) | 0)].map((_, i) => [T.virus, m.v[i * 2], m.v[i * 2 + 1], 1.3])];
+  want.forEach(([tex, x, y, k], i) => {
+    let s = v.pool[i]; if (!s) { s = new PIXI.Sprite(tex); s.anchor.set(.5); v.things.addChild(s); v.pool[i] = s; }
+    s.texture = tex; s.visible = true; s.position.set(v.ox + (x + .5) * v.cell, v.oy + (y + .5) * v.cell); s.width = s.height = v.cell * k;
+  });
+  for (let i = want.length; i < v.pool.length; i++) v.pool[i].visible = false;
+  mpTag(p);
+}
+// diğer oyuncuların akışı: iki durum arasında yumuşak geçiş, sap şerit, baş görünümün çiçeği
+function mpRender(dt, now) {
+  mpSelfHead();
+  for (const p of others()) {
+    const v = mp.views.get(p.id); if (!v || !v.cells.length) continue;
+    const a = Math.min(1, (now - v.at) / v.dur);
+    if (v.drawn === v.at && a >= 1 && v.rotDone) continue;   // durum değişmedi: geçen karedeki çizim duruyor
+    const pts = [];
+    for (let i = 0; i < v.cells.length / 2; i++) {
+      let fx = v.prev[i * 2], fy = v.prev[i * 2 + 1];
+      const tx = v.cells[i * 2], ty = v.cells[i * 2 + 1];
+      if (fx === undefined || Math.abs(fx - tx) + Math.abs(fy - ty) > 1.5) { fx = tx; fy = ty; }
+      const y = fy + (ty - fy) * a; if (y < -.5) break;   // ostiumdan çıkan kısım kartın başlığına taşmasın
+      pts.push(v.ox + (fx + (tx - fx) * a + .5) * v.cell, v.oy + (y + .5) * v.cell);
+    }
+    const n = pts.length / 2;
+    v.head.visible = n > 0; v.stem.clear();
+    if (a >= 1) v.drawn = v.at;
+    if (!n) continue;
+    if (n > 1) {
+      v.stem.moveTo(pts[0], pts[1]); for (let i = 1; i < n; i++) v.stem.lineTo(pts[i * 2], pts[i * 2 + 1]);
+      v.stem.stroke({ width: v.cell * .5, color: 0x2F7A3A, cap: 'round', join: 'round' });
+      v.stem.moveTo(pts[0], pts[1]); for (let i = 1; i < n; i++) v.stem.lineTo(pts[i * 2], pts[i * 2 + 1]);
+      v.stem.stroke({ width: v.cell * .24, color: 0x7CCB6E, cap: 'round', join: 'round' });
+    }
+    const dx = n > 1 ? pts[0] - pts[2] : 0, dy = n > 1 ? pts[1] - pts[3] : -1;
+    v.rotDone = true;
+    if (Math.abs(dx) + Math.abs(dy) > .01) { const t = Math.atan2(dy, dx), d = Math.atan2(Math.sin(t - v.rot), Math.cos(t - v.rot)); v.rot += d * Math.min(1, dt * .025); v.rotDone = Math.abs(d) < .01; }
+    v.flip = flipFor(-Math.cos(v.rot), v.flip);
+    const sc = v.cell / YILAN.cell * YK.head, f = mp.fins[p.id];
+    v.head.texture = yilanDoku('bas', MP_COLORS[p.color]); v.head.position.set(pts[0], pts[1]);
+    v.head.rotation = v.rot + Math.PI; v.head.scale.set(sc, sc * v.flip);
+    v.stem.alpha = v.head.alpha = f && !f.ok ? .45 : 1;
+  }
+  for (const v of mp.views.values()) { v.plugs.visible = !v.open; v.floor.tint = floorS.tint; }   // iltihap kızarıklığı herkeste aynı
+}
+function mpFinish(ok) {
+  const time = Math.round((gameTime - levelStart) / 100) / 10;
+  if (ok) exitFx();   // sonuç, sütunun ortasındaki yazıda (mpMark)
+  else setTimeout(() => { if (mode === 'versus') state = 'out'; }, 800);
+  mpSend(true);
+  net.send({ t: 'fin', ok, time, eaten, score });
+}
+function mpRoundOver() {
+  const ids = mp.players.map(p => p.id);
+  if (mp.over || !ids.length || !ids.every(id => mp.fins[id] || mp.away[id])) return false;
+  mp.over = true;   // tur bir kez sonuçlanır (oyuncu çıkışı ya da geç gelen ileti puanı ikinci kez eklemesin)
+  const NONE = { ok: false, eaten: -1, away: true };   // turu bitirmeden ara veren
+  const fin = id => mp.fins[id] || NONE;
+  const order = ids.slice().sort((a, b) => { const A = fin(a), B = fin(b); return (B.ok - A.ok) || (A.ok ? mp.ranks[a] - mp.ranks[b] : B.eaten - A.eaten); });
+  const pts = [3, 2, 1];
+  order.forEach((id, i) => { mp.totals[id] = (mp.totals[id] || 0) + (fin(id).ok ? pts[i] || 0 : 0); });
+  const name = id => esc((mp.players.find(p => p.id === id) || { name: '?' }).name);
+  const dot = id => `<i class="dot" style="background:${MP_CSS[(mp.players.find(p => p.id === id) || { color: 0 }).color]}"></i>`;
+  const win = order.find(id => fin(id).ok);
+  $('mprKicker').textContent = `${mp.round}. tur · ${cfg.name}`;
+  $('tMpr').textContent = win === undefined ? 'Kimse çıkamadı' : win === mp.you ? 'Turu kazandın!' : `${(mp.players.find(p => p.id === win) || {}).name} kazandı`;
+  $('mprList').innerHTML = order.map((id, i) => { const f = fin(id);
+    return `<li class="${id === mp.you ? 'me' : ''}"><span class="rk">${i + 1}</span><span class="nm">${dot(id)}<b>${name(id)}</b><small>${f.ok ? secs(f.time) + ' sn' : f.away ? 'ara verdi' : 'takıldı'}</small></span><span class="sc">+${f.ok ? pts[i] || 0 : 0}</span></li>`; }).join('');
+  const tot = ids.slice().sort((a, b) => (mp.totals[b] || 0) - (mp.totals[a] || 0));
+  $('mprTotal').innerHTML = tot.map(id => `<span>${dot(id)}${name(id)} <b>${mp.totals[id] || 0}</b></span>`).join('');
+  const fact = FACTS[mp.level] || FACTS[0];   // oynanan bölümün bilgi kartı
+  $('mprFact').querySelector('.em').textContent = fact[0]; $('mprFact').querySelector('p').textContent = fact[1];
+  mpResultButtons();
+  const t = setTimeout(() => { if (mode === 'versus') { state = 'result'; show('scrMpResult'); } }, 1400); mp.timers.push(t);
+  return true;
+}
+function mpResultButtons() {
+  const host = mp.host === mp.you, enough = mp.players.length >= 2;
+  $('btnMpNext').style.display = host ? '' : 'none'; $('btnMpNext').disabled = !enough;
+  $('mprWait').textContent = !enough ? 'Odada tek kaldın; yeni bir oyuncu katılınca devam edebilirsin.' : host ? '' : 'Ev sahibinin yeni turu başlatması bekleniyor.';
+}
+function mpStartRound(m) {
+  mpClear(); mp.fins = {}; mp.ranks = {}; mp.over = false; mp.round = m.round; mp.level = m.level;
+  mode = 'versus'; document.body.classList.add('versus');
+  levelIdx = m.level; score = 0; lastScore = -1; gameSneezes = 0; rnd = seeded(m.seed);
+  applySkin(MP_SKIN[(me() || { color: 0 }).color]);
+  musicScene('act' + LEVELS[m.level].act); musicDuck(false);
+  setupBoard(LEVELS[m.level]); layout(); state = 'intro'; show(null);
+  hudLevel(); hudScore(); hudBar();
+  for (const p of others()) { const v = mpView(p); v.cells = []; v.prev = []; v.stem.clear(); v.head.texture = PIXI.Texture.EMPTY; }
+  mpLayout(app.screen.width, app.screen.height);
+  // bölümün bilgisi ve geri sayım: herkes aynı anda başlar
+  const L = LEVELS[m.level], wait = Math.max(0, m.in | 0), at = (ms, f) => mp.timers.push(setTimeout(f, ms));
+  $('mpiKicker').textContent = `${m.round}. tur · ${ACTS[L.act]} · Bölüm ${m.level + 1}/${LEVELS.length}`;
+  $('tMpi').textContent = L.name; $('mpiDesc').textContent = L.desc;
+  $('mpiLegend').innerHTML = legendFor(L);
+  show('scrMpIntro');
+  for (let k = Math.ceil(wait / 1000); k >= 1; k--) at(wait - k * 1000, () => { const el = $('mpCount'); el.textContent = k; el.classList.remove('go'); void el.offsetWidth; el.classList.add('go'); if (k <= 3) sfx('star'); });
+  at(wait, () => { if (mode !== 'versus') return; if (current === 'scrMpIntro') show(null); state = 'play'; levelStart = gameTime; acc = 0; waiting = false; callout('Akış başladı!', 'Mukusu topla, ostiumdan ilk sen çık'); mpSend(true); });
+}
+// bağlantıdan gelenler
+net.on(m => {
+  switch (m.t) {
+    case 'room':
+      mp.code = m.code; mp.you = m.you; mp.host = m.host; mp.players = m.players; mp.round = m.round || 0; mp.totals = {};
+      mp.away = {}; for (const p of m.players) if (p.away) mp.away[p.id] = true;
+      mpLobby(); break;
+    case 'players': {
+      mp.host = m.host; mp.players = m.players;
+      for (const p of m.players) if (p.id !== mp.you) mp.away[p.id] = !!p.away;
+      if (m.left !== undefined) { mpDrop(m.left); delete mp.fins[m.left]; }
+      if (mode === 'versus') {
+        layout();
+        if (state !== 'intro' && state !== 'play' && state !== 'exiting') mpResultButtons();
+        if ((state === 'play' || state === 'exiting' || state === 'result' || state === 'out' || state === 'dying') && current !== 'scrMpResult') mpRoundOver();
+      } else mpLobby();
+      break;
+    }
+    case 'start': mpStartRound(m); break;
+    case 'away': {
+      mp.away[m.from] = m.on;
+      const p = mp.players.find(q => q.id === m.from);
+      if (p && mode === 'versus') {
+        mpTag(p); mpMark(p.id);
+        if (!mp.fins[p.id] && !mp.over) callout(m.on ? `${p.name} oyuna ara verdi` : `${p.name} oyuna döndü`, m.on ? 'Sen oynamaya devam et' : '');
+        mpRoundOver();
+      }
+      break;
+    }
+    case 'st': if (mode === 'versus') mpState(m); break;
+    case 'fin': {
+      mp.fins[m.from] = m;
+      if (m.ok) mp.ranks[m.from] = Object.values(mp.fins).filter(f => f.ok).length;   // varış sırası
+      mpMark(m.from);
+      const p = mp.players.find(q => q.id === m.from); if (p && p.id !== mp.you) { mpTag(p); if (m.ok && mode === 'versus' && state === 'play') callout(`${p.name} ostiumdan çıktı`, 'Acele et!'); }
+      if (mode === 'versus') mpRoundOver();
+      break;
+    }
+    case 'error': mpError(m.msg); break;
+    case 'closed':
+      if (mode === 'versus') { goHome(); openMp(); mpError('Bağlantı koptu. Yeniden oda kurabilir ya da katılabilirsin.'); }
+      else if (mp.code) { mp.code = ''; mpLobby(); mpError('Bağlantı koptu.'); }
+      else mpError('Sunucuya bağlanılamadı. Biraz sonra yeniden dene.');
+      break;
+  }
+});
+function mpError(msg) { $('mpErr').textContent = msg || ''; }
+function mpLobby() {
+  const inRoom = !!mp.code;
+  $('mpJoin').style.display = inRoom ? 'none' : ''; $('mpRoom').style.display = inRoom ? '' : 'none';
+  if (!inRoom) return;
+  mpError('');
+  $('mpCodeShow').textContent = mp.code;
+  $('mpList').innerHTML = mp.players.map(p => `<li class="${p.id === mp.you ? 'me' : ''}"><span class="nm"><i class="dot" style="background:${MP_CSS[p.color]}"></i><b>${esc(p.name)}</b><small>${p.id === mp.host ? 'ev sahibi' : ''}${p.id === mp.you ? (p.id === mp.host ? ' · sen' : 'sen') : ''}</small></span>${mp.round ? `<span class="sc">${mp.totals[p.id] || 0}</span>` : ''}</li>`).join('')
+    + (mp.players.length < 3 ? '<li class="empty">Arkadaşlarını bekliyorsun…</li>' : '');
+  const host = mp.host === mp.you;
+  $('btnMpStart').style.display = host ? '' : 'none'; $('btnMpStart').disabled = mp.players.length < 2;
+  $('mpWait').textContent = host ? (mp.players.length < 2 ? 'Turu başlatmak için en az bir arkadaşın katılmalı.' : '') : 'Ev sahibinin turu başlatması bekleniyor.';
+}
+function openMp() {
+  $('mpName').value = $('mpName').value || prog.mpName || '';
+  mpLobby(); mpError(''); show('scrMp');
+}
+const mpNameOk = () => { const n = cleanName($('mpName').value); if (!n) { mpError('Önce bir takma ad yaz.'); $('mpName').focus(); return null; } prog.mpName = n; save(); return n; };
+$('btnMulti').onclick = () => { initAudio(); openMp(); };
+$('btnMpCreate').onclick = () => { const n = mpNameOk(); if (n) { mpError('Bağlanıyor…'); net.send({ t: 'create', name: n }); } };
+$('btnMpJoin').onclick = () => {
+  const n = mpNameOk(); if (!n) return;
+  const c = $('mpCode').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (c.length !== 4) { mpError('Oda kodu 4 karakter.'); $('mpCode').focus(); return; }
+  mpError('Bağlanıyor…'); net.send({ t: 'join', code: c, name: n });
+};
+$('mpCode').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4); });
+$('mpCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnMpJoin').click(); });
+$('btnMpStart').onclick = () => { initAudio(); net.send({ t: 'start', level: 0 }); };
+$('btnMpNext').onclick = () => net.send({ t: 'start', level: (mp.level + 1) % LEVELS.length });
+const mpLeave = () => { net.send({ t: 'leave' }); net.close(); mp.code = ''; mp.players = []; mp.round = 0; goHome(); };
+$('mpBack').onclick = () => { if (mp.code) mpLeave(); else goHome(); };
+$('btnMpLeave').onclick = mpLeave;
+
 // #debug: tarayıcı konsolu ve denge testi (tools/denge-testi.mjs) için kancalar
 if (DEBUG) window.__ns = {
   step, botDir, addVirus, prog, createMusic,
-  get st() { return { state, mode, len, eaten, target, exitOpen, score, levelIdx, reason: deathReason }; },
+  get st() { return { state, mode, len, eaten, target, exitOpen, score, levelIdx, reason: deathReason, cell }; }, mp, bot(on) { autoBot = on; },
   items: () => items.map(i => [i.type, i.x, i.y]), viruses: () => viruses.map(v => [v.x, v.y]),
   head: () => [bx[0], by[0]], body: () => Array.from({ length: len }, (_, i) => [bx[i], by[i]]), obs: (x, y) => obstacle[y * COLS + x],
   mover: (x, y) => !!moverAt(x, y), exit: () => exits, setDir: d => { dir = d; queue.length = 0; }, dir: () => dir,
-  carried: () => carriedAt.length, lv: () => lv, spawn, callout, die,
+  carried: () => carriedAt.length, lv: () => lv, spawn, callout, die, sneeze: () => sneeze(dir), cam: () => ({ ...cam, pre }),
   snakeBox: () => { const r = snakeLayer.getBounds(); return [r.x, r.y, r.width, r.height]; },
+  // yılanı verilen hücrelere yerleştirip oyunu dondurur (görünüm denetimi)
+  YK,
+  pose(cells, skinIdx) { frozen = true; len = prevLen = cells.length; cells.forEach(([x, y], i) => { bx[i] = px[i] = x; by[i] = py[i] = y; }); if (skinIdx !== undefined) applySkin(skinIdx); },
   // bölümü bot oynar
   play(i) { openIntro(i); begin(); autoBot = true; }, intro: openIntro,
   run(maxMs = 300000) {

@@ -427,17 +427,18 @@ const SHAPES = {
 
 // replicate: virüsün çoğalma aralığı (ms). Akışın geçtiği doku artık korumadığı için 2026-10-10'da ~%35 uzatıldı.
 // immune: mukus toplandığında ya da virüs çoğaldığında bağışıklık hücresi çıkma olasılığı (tahtada virüs varken); alınınca virüsler bir süre çoğalamaz
+// start: akışın başı (yukarı bakar, gövde altında). Önünde en az 12 hücre düz yol bırakılır: oyuncu ilk dönüşe hazırlanabilsin
 export const LEVELS = [
   // burun boşlukları: akış burun deliğinden (görseldeki siklamen) başlar, üstteki kanaldan çıkar
   { act: 0, name: 'Sağ burun boşluğu', desc: 'Kaydırarak yön ver, mukusları topla, sonra açılan çıkıştan akışı dışarı çıkar.',
-    target: 6, step: 150, obs: [], shape: SHAPES.noseSag, start: [7, 30], gold: .35, serum: 0, breeze: 0, obj: [['gold', 1], ['time', 50]] },
+    target: 6, step: 150, obs: [], shape: SHAPES.noseSag, start: [12, 28], gold: .35, serum: 0, breeze: 0, obj: [['gold', 1], ['time', 50]] },
   { act: 0, name: 'Sol burun boşluğu', desc: 'Bu kez çıkış sağ üstte. Üç mukusu art arda hızlıca toplarsan hapşırma refleksi akışı bir anlığına hızlandırır.',
-    target: 8, step: 138, obs: [], shape: SHAPES.noseSol, start: [18, 30], gold: .25, serum: .18, breeze: 0, obj: [['sneeze', 1], ['time', 60]] },
+    target: 8, step: 138, obs: [], shape: SHAPES.noseSol, start: [13, 28], gold: .25, serum: .18, breeze: 0, obj: [['sneeze', 1], ['time', 60]] },
   { act: 1, name: 'Sağ maksiller sinüs', desc: 'Sinüslerin en büyüğü; ağzı üst iç duvarda olduğu için akış yukarı tırmanmalı. Virüs mukusa yapışır; virüslü mukusu topla, sinüs daha çok rahatlar ve akış virüsü dışarı taşır.',
     // ilk şekilli bölüm ve virüsün geldiği bölüm: alan dar olduğu için yavaş ve kısa
-    target: 8, step: 150, obs: [], shape: SHAPES.maxillarySag, start: [14, 12], gold: .3, serum: .12, breeze: .14, virus: 2, virusEvery: 3, obj: [['virus', 2], ['gold', 1]] },
+    target: 8, step: 150, obs: [], shape: SHAPES.maxillarySag, start: [14, 20], gold: .3, serum: .12, breeze: .14, virus: 2, virusEvery: 3, obj: [['virus', 2], ['gold', 1]] },
   { act: 1, name: 'Sol maksiller sinüs', desc: 'Bu kez ostium sol üstte. Virüsler zamanla çoğalır. Antibiyotik virüse etki etmez; virüsle vücudun kendi savunması savaşır. Bağışıklık hücresini topla, virüsler bir süre çoğalamaz.',
-    target: 10, step: 126, obs: [], shape: SHAPES.maxillarySol, start: [11, 11], gold: .25, serum: .16, breeze: .14,
+    target: 10, step: 126, obs: [], shape: SHAPES.maxillarySol, start: [11, 19], gold: .25, serum: .16, breeze: .14,
     virus: 2, replicate: 19000, virusMax: 5, immune: .45, obj: [['immune', 1], ['virus', 2]] },
   // etmoid: gözlerin arasında, ince kemik bölmelerle ayrılmış hava hücreleri (raflar); ostium altta, akış aşağı iner.
   // Bölmeler yeni öğe olduğu için hız sol maksillerle aynı; alan dar ama uzun
@@ -455,7 +456,8 @@ export const LEVELS = [
     target: 11, step: 114, obs: [], shape: SHAPES.frontalSol, start: [16, 15], movers: [[7, 18, 1]], harden: 10000, gold: .25, serum: .2, breeze: .2,
     virus: 3, replicate: 15000, virusMax: 6, immune: .5, obj: [['noinfect', 0], ['nohard', 0]] },
 ];
-export const DEMO = { name: 'demo', target: Infinity, step: 118, obs: [], gold: 0, serum: 0, breeze: 0 };
+// ana menünün arka planı: insan yüzündeki sinüsler (src/face.js); akış burun boşluğundan başlar
+export const DEMO = { name: 'demo', target: Infinity, step: 128, obs: [], face: true, start: [12, 10], gold: 0, serum: 0, breeze: 0 };
 
 // Her bölümü bitirince açılan bilgi kartı (bölüm sırasıyla)
 export const FACTS = [
@@ -505,14 +507,15 @@ export const TIPS = [
   CLOSING,
 ];
 export const SKINS = [
-  // petal: taç yaprak, eye: yaprak dibindeki koyu leke, disc: yüzün olduğu orta kısım. petal -1 = gökkuşağı
-  { name: 'Magenta',     need: 0,  petal: 0xF075B5, eye: 0x7E0B45, disc: 0xD6227F },
-  { name: 'Pembe',       need: 3,  petal: 0xF9A3CB, eye: 0xC2185B, disc: 0xF06AAE },
-  { name: 'Beyaz',       need: 6,  petal: 0xFFFFFF, eye: 0xC2185B, disc: 0xFBE3EE },
-  { name: 'Mor',         need: 9,  petal: 0xA066D6, eye: 0x4A1A7A, disc: 0x8446C2 },
-  { name: 'Kırmızı',     need: 13, petal: 0xE8434F, eye: 0x7D0F22, disc: 0xC9283A },
-  { name: 'Gökkuşağı',   need: 18, petal: -1,       eye: 0x5A1A6E, disc: 0x7A3FD1 },
+  // petal: taç yaprak rengi (Magenta = src/assets/siklamen_yilan.png çizimindeki pembe). petal -1 = gökkuşağı
+  { name: 'Magenta',     need: 0,  petal: 0xF8157E },
+  { name: 'Pembe',       need: 3,  petal: 0xF9A3CB },
+  { name: 'Beyaz',       need: 6,  petal: 0xFFFFFF },
+  { name: 'Mor',         need: 9,  petal: 0xA066D6 },
+  { name: 'Kırmızı',     need: 13, petal: 0xE8434F },
+  { name: 'Gökkuşağı',   need: 18, petal: -1 },
   { name: 'Klasik akış', need: 0,  classic: true, body: 0x1FB5A0, head: 0xD6227F },
+  { name: 'Turkuaz',     need: 0,  petal: 0x1FB5A0 },   // çok oyunculuda üçüncü oyuncunun rengi
 ];
 export const BADGES = [
   ['first',   '💧', 'İlk damla',        'İlk mukusunu topla'],

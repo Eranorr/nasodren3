@@ -1,6 +1,6 @@
 /*
  * EKRAN TESTİ
- * Bütün ekranları (ana ekran, bilgilendirme, koleksiyon, bölüm girişi, oyun, duraklat, sonuç, oyun sonu)
+ * Bütün ekranları (ana ekran, bilgilendirme, bölüm girişi, oyun, duraklat, sonuç, oyun sonu)
  * telefon, yatay telefon, tablet ve masaüstü boyutlarında açar; her tıklanabilir öğe için ölçer:
  * ekranın/kartın içinde mi, başka bir öğenin altında mı, rozet bildirimi ya da ekran mesajı üstüne biniyor mu,
  * yazısı kesik mi. Her ekran için bütün boyutları yan yana gösteren bir kontrol görüntüsü de üretir.
@@ -26,9 +26,6 @@ const ready = async p => { await p.goto(GAME); await p.waitForFunction(() => win
 const withProg = async p => p.evaluate(() => { const g = window.__ns.prog; g.done[0] = g.done[1] = g.done[2] = true; g.mask[0] = 7; g.mask[1] = 3; g.facts[0] = g.facts[1] = true; });
 const SCREENS = {
   home: async p => {},
-  collectSkins: async p => { await p.click('#btnCollect'); },
-  collectBadges: async p => { await p.click('#btnCollect'); await p.click('.tab[data-tab="badges"]'); },
-  collectFacts: async p => { await withProg(p); await p.click('#btnCollect'); await p.click('.tab[data-tab="facts"]'); },
   intro1: async p => { await withProg(p); await p.click('#btnAdventure'); },
   intro4: async p => { await withProg(p); await p.evaluate(() => window.__ns.intro(3, 1200)); },
   infoLearn: async p => { await p.click('#btnInfo'); },
@@ -57,7 +54,7 @@ const audit = () => {
   const issues = [];
   const ov = document.querySelector('.overlay.show');
   const root = ov || document.getElementById('app');
-  const els = [...root.querySelectorAll('.btn, .icon, .tab, .link, .skin')];
+  const els = [...root.querySelectorAll('.btn, .icon, .tab, .link')];
   if (!ov) els.push(...document.querySelectorAll('#hud .icon, #hud .pill'));
   const vw = innerWidth, vh = innerHeight;
   const name = e => (e.id || e.dataset.tab || e.textContent.trim().slice(0, 18) || e.className);

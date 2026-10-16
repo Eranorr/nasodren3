@@ -53,10 +53,15 @@ export function playSfx(name) {
     case 'replicate': tone('triangle', 180, 360, 0.2, 0.06); tone('triangle', 240, 480, 0.2, 0.05, 0.08); break;
     case 'immune': [392, 523, 659, 784].forEach((f, i) => tone('triangle', f, f * 1.02, 0.12, 0.07, i * 0.06)); break;   // savunma devrede
     case 'die':    tone('sawtooth', 240, 50, 0.45, 0.1); break;
-    case 'sneeze': {
-      const t = actx.currentTime, s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
-      s.buffer = noiseBuf; f.type = 'bandpass'; f.frequency.setValueAtTime(2400, t); f.frequency.exponentialRampToValueAtTime(700, t + 0.3); f.Q.value = 0.9;
-      g.gain.setValueAtTime(0.35, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    case 'sneeze': {   // "ha..." kısa bir nefes alma, ardından "hapşu!" (ekrandaki itişle aynı anda: main.js SNEEZE_LEAD)
+      const t0 = actx.currentTime, d = 0.15, t = t0 + d;
+      const i = actx.createBufferSource(), fi = actx.createBiquadFilter(), gi = actx.createGain();
+      i.buffer = noiseBuf; fi.type = 'bandpass'; fi.frequency.setValueAtTime(600, t0); fi.frequency.exponentialRampToValueAtTime(1600, t); fi.Q.value = 1.4;
+      gi.gain.setValueAtTime(0.0001, t0); gi.gain.exponentialRampToValueAtTime(0.09, t - 0.02); gi.gain.exponentialRampToValueAtTime(0.0001, t);
+      i.connect(fi).connect(gi).connect(sfxBus); i.start(t0); i.stop(t + 0.02);
+      const s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+      s.buffer = noiseBuf; f.type = 'bandpass'; f.frequency.setValueAtTime(2600, t); f.frequency.exponentialRampToValueAtTime(650, t + 0.32); f.Q.value = 0.9;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.42, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
       s.connect(f).connect(g).connect(sfxBus); s.start(t); break;
     }
   }
