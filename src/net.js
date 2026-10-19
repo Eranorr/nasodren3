@@ -1,9 +1,12 @@
 /* =========================================================================
    ÇOK OYUNCULU BAĞLANTI: aktarım sunucusuyla (server/relay.mjs) WebSocket.
    Gönderilen yalnızca oyun anı: takma ad, akışın hücreleri, tahtadaki nesneler, skor. Sunucu hiçbir şey saklamaz.
-   Adres VITE_MP_URL ile verilir; verilmezse sayfanın açıldığı makinenin 8787 portu.
+   Adres VITE_MP_URL ile verilir; verilmezse sayfayı veren sunucunun /mp yolu (npm run dev / preview bunu sağlar).
+   Sayfa dosyadan açıldıysa (file://) aynı makinedeki tek başına sunucuya (npm run mp, 8787) bağlanır.
    ========================================================================= */
-const URL_ = import.meta.env.VITE_MP_URL || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname || 'localhost'}:8787`;
+const URL_ = import.meta.env.VITE_MP_URL || (location.host
+  ? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/mp`
+  : 'ws://localhost:8787');
 
 let ws = null, handler = () => {}, queue = [];
 export const net = {

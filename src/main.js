@@ -230,14 +230,16 @@ function faceLayout(w, h) {
   const st = stageEl.getBoundingClientRect(), home = $('scrHome'), fw = FACE_BOX.x1 - FACE_BOX.x0;
   const fit = (aw, ah) => { const whole = Math.min(aw / fw, ah / (FACE_BOX.whole[1] - FACE_BOX.whole[0]));
     return whole >= 12 ? whole : Math.min(aw / fw, ah / (FACE_BOX.crop[1] - FACE_BOX.crop[0])); };
-  let best = { x: 0, y: 0, w, h, c: fit(w, h) * .9 };   // yer yoksa ekranın tamamı (kartların arkasında)
+  let best = null;
   if (home.classList.contains('show')) {
     const [br, sh] = [home.querySelector('.brand'), home.querySelector('.sheet')].map(e => { const b = e.getBoundingClientRect(); return { l: b.left - st.left, r: b.right - st.left, t: b.top - st.top, b: b.bottom - st.top }; });
     const cand = [], R = Math.max(br.r, sh.r), L = Math.min(br.l, sh.l);
     if (sh.t > br.b) cand.push({ x: 0, y: Math.max(0, br.b), w, h: Math.min(h, sh.t) - Math.max(0, br.b) });
     cand.push({ x: R, y: 0, w: w - R, h }, { x: 0, y: 0, w: L, h });
-    for (const c of cand) if (c.w > 0 && c.h > 0) { c.c = fit(c.w - 8, c.h - 8); if (c.c > best.c && c.c >= 7) best = c; }
+    // açıkta okunur büyüklükte (hücre ≥ 6 px) sığıyorsa orada durur: kartların arkasındaki daha büyük yüz sinüsleri gizler
+    for (const c of cand) if (c.w > 0 && c.h > 0) { c.c = fit(c.w - 8, c.h - 8); if (c.c >= 6 && (!best || c.c > best.c)) best = c; }
   }
+  best ||= { x: 0, y: 0, w, h, c: fit(w, h) * .9 };   // açıkta yer yoksa ekranın tamamı (kartların arkasında)
   cell = Math.max(6, Math.floor(best.c));
   boardW = COLS * cell; boardH = ROWS * cell; calloutBand = 0;
   baseX = Math.round(best.x + best.w / 2 - 13 * cell); baseY = Math.round(best.y + best.h / 2 - FACE_BOX.cy * cell);

@@ -203,6 +203,20 @@ img{max-width:100%}
   .menu .btn.teal,.menu .btn.gold{font-size:15.5px}
   .menu .btn.teal svg,.menu .btn.gold svg{display:none}
 }
+/* Kısa dikey telefon (ör. tarayıcı çubuklarıyla S21 FE): başlık yan yana, düğmeler biraz alçak; aradaki yüz kartların arkasında kalmasın */
+@media (max-aspect-ratio: 6/5) and (max-height: 820px){
+  #scrHome{padding:10px 14px}
+  #scrHome .brand{display:grid;grid-template-columns:auto auto;column-gap:10px;align-items:center;text-align:left;padding:8px 18px 7px}
+  #scrHome .brand img{grid-row:span 3;margin:0;width:40px;height:40px}
+  #scrHome .brand h1{font-size:40px}
+  #scrHome .brand p{font-size:13px;margin:0}
+  .menu{gap:10px}
+  .menu .btn{min-height:48px}
+  .btn.play{min-height:58px;font-size:25px}
+  .btn.gear{width:58px;min-height:58px}
+  .homestats{margin-top:9px}
+  .sheet{padding:14px}
+}
 /* Kart düğmeleri kartın altına sabit bir alanda: kart kaydırılsa da ana düğme ve "Geri" birlikte görünür,
    altlarından içerik görünmez (kartın alt dolgusunu da kaplar) */
 .card .actions{position:sticky;bottom:-18px;z-index:1;background:var(--card);margin:0 -22px -18px;padding:10px 22px 18px;border-radius:0 0 28px 28px}
@@ -243,8 +257,8 @@ img{max-width:100%}
 .settings{display:flex;flex-direction:column;gap:10px}
 .setting{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#FBF4F7;border-radius:16px;padding:12px 14px}
 .setting b{display:block;font-size:16px;line-height:1.15}
-.setting span span,.setting.col>span:last-child:not(.row2){display:block;font-size:12.5px;color:var(--ink2);line-height:1.25;font-weight:600}
-.setting.col{flex-direction:column;align-items:stretch;gap:8px}
+.setting span span,.setting.slider>span:last-child:not(.row2){display:block;font-size:12.5px;color:var(--ink2);line-height:1.25;font-weight:600}
+.setting.slider{flex-direction:column;align-items:stretch;gap:8px}
 .setting .row2{display:flex;justify-content:space-between;align-items:baseline}
 .setting output{font-weight:800;font-variant-numeric:tabular-nums;color:var(--cyc)}
 .setting input[type=range]{width:100%;margin:0;accent-color:var(--cyc);height:28px;cursor:pointer}
