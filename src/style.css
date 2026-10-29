@@ -24,10 +24,12 @@ img{max-width:100%}
 .pill{background:var(--card);border-radius:999px;padding:4px 14px;box-shadow:0 2px 0 var(--line);font-weight:700;white-space:nowrap}
 #hudLevel{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:15px}
 #hudScore{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;min-width:64px;text-align:center;color:var(--cyc)}
+#hudScore.minus{animation:minus .45s ease-out}   /* mukus damlası yutulunca puan düştü */
+@keyframes minus{0%,100%{transform:none}20%{transform:translateX(-4px);color:#D93A4E}45%{transform:translateX(4px);color:#D93A4E}70%{transform:translateX(-2px)}}
 .bar{flex:1;display:flex;align-items:center;gap:8px;background:var(--card);border-radius:999px;padding:6px 12px;box-shadow:0 2px 0 var(--line);min-width:0}
 .bar span{font-size:13px;font-weight:700;color:var(--ink2);white-space:nowrap}
 .track{flex:1;height:10px;border-radius:10px;background:#F4E3E9;overflow:hidden}
-.fill{height:100%;background:#B9C63A;transform-origin:left center;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+.fill{height:100%;background:linear-gradient(90deg,#9BE8CF,#2FC4A2);transform-origin:left center;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
 .fill.open{background:var(--flow)}
 #chips{display:flex;gap:6px}
 .chip{display:none;align-items:center;gap:4px;background:var(--card);border-radius:999px;padding:3px 8px 3px 4px;box-shadow:0 2px 0 var(--line);font-size:12px;font-weight:700}
@@ -301,7 +303,7 @@ img{max-width:100%}
 .opp b{flex:1;min-width:0;display:block;font-size:19px;font-weight:800;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .opp .hl em{flex:none;font-style:normal;font-weight:800;font-size:24px;line-height:1;font-variant-numeric:tabular-nums}
 .opp .pb{flex:none;position:relative;height:20px;border-radius:99px;background:rgba(42,7,22,.38);box-shadow:inset 0 1px 2px rgba(0,0,0,.25);overflow:hidden}
-.opp .pb i{position:absolute;inset:0;background:#C9D84A;transform-origin:left center;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+.opp .pb i{position:absolute;inset:0;background:#8FE3C8;transform-origin:left center;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
 .opp .pb.open i{background:#3FE0C8}
 .opp .pb span{position:relative;display:block;padding:0 10px;font-size:13.5px;font-weight:800;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 2px rgba(42,7,22,.7)}
 @container (max-width: 299px){

@@ -10,6 +10,8 @@ function blob(x, cx, cy, r, bumps, amp, rnd) {
   }
   x.closePath();
 }
+// aynı şekli dolgu, kırpma ve kontur için tekrar kullanmak üzere Path2D olarak
+function blobPath(...a) { const p = new Path2D(); blob({ beginPath() {}, moveTo: (X, Y) => p.moveTo(X, Y), lineTo: (X, Y) => p.lineTo(X, Y), closePath: () => p.closePath() }, ...a); return p; }
 function rg(x, x0, y0, r0, x1, y1, r1, stops) { const g = x.createRadialGradient(x0, y0, r0, x1, y1, r1); stops.forEach(([o, c]) => g.addColorStop(o, c)); return g; }
 function eyes(x, cx, cy, gap, r, mood) {
   for (const s of [-1, 1]) {
@@ -57,13 +59,79 @@ C.soft = (() => { const [c, x] = cnv();
   x.fillStyle = rg(x, TS / 2, TS / 2, 0, TS / 2, TS / 2, TS / 2, [[0, 'rgba(255,255,255,1)'], [.5, 'rgba(255,255,255,.5)'], [1, 'rgba(255,255,255,0)']]);
   x.fillRect(0, 0, TS, TS); return c; })();
 C.dot = (() => { const [c, x] = cnv(); x.fillStyle = '#fff'; x.beginPath(); x.arc(TS / 2, TS / 2, TS / 2 - 2, 0, 6.28); x.fill(); return c; })();
-C.mucus = [11, 23, 37].map(sd => { const [c, x] = cnv(), rnd = seeded(sd);
-  blob(x, TS / 2, TS * .54, TS * .4, 4, .08, rnd);
-  x.fillStyle = rg(x, TS * .4, TS * .38, 4, TS / 2, TS / 2, TS * .5, [[0, '#F0F28C'], [.55, '#C3CF3E'], [1, '#8F9A1C']]); x.fill();
-  x.lineWidth = 10; x.strokeStyle = '#5E6810'; x.stroke();
-  eyes(x, TS / 2, TS * .5, TS * .13, TS * .085, 'grumpy');
-  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .03; x.lineCap = 'round'; x.beginPath(); x.arc(TS / 2, TS * .75, TS * .07, Math.PI + .5, -.5); x.stroke();
-  return c; });
+// virüs (toplanan; src/assets/bacteria.png'den oyunun diliyle uyarlandı): yeşilin koyu tonunda tek kontur, yumuşak geçiş,
+// sol üstte parlama; yumrulu kısa kollar, açık benekler, yeşil irisli tek iri göz ve dişli geniş sırıtış. (Kodda tür adı 'mucus'.)
+// mood: 'grin' tahtada, 'scared' akış yaklaşınca, 'dizzy' toplanıp yıkanırken
+const V_OUT = '#3B861C', V_MID = '#9BD443', V_INK = '#2B0F22';
+function virusTex(sd, mood) { const [c, x] = cnv(), rnd = seeded(sd), cx = TS / 2, cy = TS * .52, r = TS * .315, off = rnd() * 6.28, KR = TS * .054;
+  const arms = [...Array(8)].map((_, i) => { const a = i / 8 * Math.PI * 2 + off + (rnd() - .5) * .25, b = (rnd() - .5) * .45;
+    return [cx + Math.cos(a) * r * .8, cy + Math.sin(a) * r * .8, cx + Math.cos(a + b) * r * 1.16, cy + Math.sin(a + b) * r * 1.16, cx + Math.cos(a + b * .5) * r * 1.36, cy + Math.sin(a + b * .5) * r * 1.36]; });
+  x.lineCap = 'round'; x.lineJoin = 'round';
+  for (const [w, col] of [[12, V_OUT], [5, V_MID]]) for (const [x0, y0, qx, qy, x1, y1] of arms) {
+    x.strokeStyle = col; x.lineWidth = w; x.beginPath(); x.moveTo(x0, y0); x.quadraticCurveTo(qx, qy, x1, y1); x.stroke();
+  }
+  for (const [, , , , x1, y1] of arms) {
+    x.beginPath(); x.arc(x1, y1, KR, 0, 6.28);
+    x.fillStyle = rg(x, x1 - KR * .4, y1 - KR * .4, 1, x1, y1, KR, [[0, '#F1FDBE'], [1, V_MID]]); x.fill();
+    x.lineWidth = 4; x.strokeStyle = V_OUT; x.stroke();
+  }
+  const body = blobPath(cx, cy, r, 6, .03, rnd);
+  x.fillStyle = rg(x, cx - r * .4, cy - r * .45, 4, cx, cy, r * 1.05, [[0, '#F1FDBE'], [.55, V_MID], [1, '#6DB02A']]); x.fill(body);
+  x.save(); x.clip(body);
+  for (const [px, py, pr] of [[-.74, .16, .15], [-.58, -.42, .08], [.72, .02, .12], [.62, -.5, .07], [-.3, .78, .1], [.4, .74, .09], [.82, .42, .06]]) {   // benekler
+    x.fillStyle = 'rgba(64,135,26,.42)'; x.beginPath(); x.arc(cx + px * r, cy + py * r, pr * r, 0, 6.28); x.fill();
+    x.fillStyle = 'rgba(240,255,200,.55)'; x.beginPath(); x.arc(cx + px * r - pr * r * .3, cy + py * r - pr * r * .3, pr * r * .35, 0, 6.28); x.fill();
+  }
+  x.restore();
+  x.lineWidth = 8; x.strokeStyle = V_OUT; x.stroke(body);
+  x.fillStyle = 'rgba(255,255,255,.8)'; x.beginPath(); x.ellipse(cx - r * .56, cy - r * .58, r * .22, r * .12, -.6, 0, 6.28); x.fill();
+  // tek iri göz
+  const ey = cy - r * .17, er = TS * (mood === 'scared' ? .13 : .118);
+  x.fillStyle = '#fff'; x.beginPath(); x.ellipse(cx, ey, er, er * 1.06, 0, 0, 6.28); x.fill();
+  x.lineWidth = 3.5; x.strokeStyle = V_OUT; x.stroke();
+  if (mood === 'dizzy') {   // sarmal göz
+    x.strokeStyle = V_INK; x.lineWidth = TS * .022; x.beginPath();
+    for (let i = 0; i <= 40; i++) { const a = i / 40 * Math.PI * 4.2, rr = er * .08 + er * .62 * i / 40; i ? x.lineTo(cx + Math.cos(a) * rr, ey + Math.sin(a) * rr) : x.moveTo(cx, ey); }
+    x.stroke();
+  } else {
+    const k = mood === 'scared' ? .55 : 1, ix = cx + er * .1 * k, iy = ey + er * .1 * k;
+    x.fillStyle = rg(x, ix - er * .2, iy - er * .2, 1, ix, iy, er * .64 * k, [[0, '#B6EE6A'], [1, '#3F9C22']]); x.beginPath(); x.arc(ix, iy, er * .64 * k, 0, 6.28); x.fill();
+    x.fillStyle = V_INK; x.beginPath(); x.arc(ix, iy, er * .34 * k, 0, 6.28); x.fill();
+    x.fillStyle = '#fff'; x.beginPath(); x.arc(ix - er * .2 * k, iy - er * .22 * k, er * .16, 0, 6.28); x.fill();
+  }
+  // ağız
+  const my = cy + r * .36;
+  if (mood === 'grin') {
+    const mw = TS * .15, mouth = new Path2D();
+    mouth.moveTo(cx - mw, my); mouth.quadraticCurveTo(cx, my + TS * .025, cx + mw, my); mouth.quadraticCurveTo(cx, my + TS * .19, cx - mw, my); mouth.closePath();
+    x.fillStyle = '#6B1A3A'; x.fill(mouth);
+    x.save(); x.clip(mouth);
+    x.fillStyle = '#F27A9B'; x.beginPath(); x.ellipse(cx, my + TS * .135, mw * .55, TS * .05, 0, 0, 6.28); x.fill();
+    x.fillStyle = '#fff'; for (const s of [-1, 1]) { x.beginPath(); x.moveTo(cx + s * mw * .66, my); x.lineTo(cx + s * mw * .3, my + 2); x.lineTo(cx + s * mw * .47, my + TS * .06); x.closePath(); x.fill(); }
+    x.restore();
+    x.lineWidth = TS * .024; x.strokeStyle = V_INK; x.stroke(mouth);
+  } else if (mood === 'scared') {   // küçük titrek "o" ağız ve ter damlası
+    x.fillStyle = '#6B1A3A'; x.beginPath(); x.ellipse(cx, my + TS * .04, TS * .045, TS * .055, 0, 0, 6.28); x.fill();
+    x.lineWidth = TS * .022; x.strokeStyle = V_INK; x.stroke();
+    const sx = cx + r * .78, sy = cy - r * .62;
+    x.beginPath(); x.moveTo(sx, sy - TS * .06); x.quadraticCurveTo(sx + TS * .045, sy + TS * .01, sx, sy + TS * .03); x.quadraticCurveTo(sx - TS * .045, sy + TS * .01, sx, sy - TS * .06);
+    x.fillStyle = '#BFE8FF'; x.fill(); x.lineWidth = 2.5; x.strokeStyle = '#2B73B0'; x.stroke();
+  } else {   // sersem dalgalı ağız
+    x.strokeStyle = V_INK; x.lineWidth = TS * .024; x.beginPath();
+    for (let i = 0; i <= 20; i++) { const X = cx - TS * .1 + i / 20 * TS * .2, Y = my + TS * .04 + Math.sin(i / 20 * Math.PI * 3) * TS * .018; i ? x.lineTo(X, Y) : x.moveTo(X, Y); }
+    x.stroke();
+  }
+  return c;
+}
+C.mucus = [11, 23, 37].map(sd => virusTex(sd, 'grin'));
+C.mucusScared = [11, 23, 37].map(sd => virusTex(sd, 'scared'));
+C.mucusDizzy = [11, 23, 37].map(sd => virusTex(sd, 'dizzy'));
+// temizlik pırıltısı: dört köşeli yıldızcık
+C.sparkle = (() => { const [c, x] = cnv(), m = TS / 2;
+  x.fillStyle = rg(x, m, m, 0, m, m, m, [[0, 'rgba(255,255,255,.7)'], [.35, 'rgba(255,255,230,.18)'], [1, 'rgba(255,255,230,0)']]); x.fillRect(0, 0, TS, TS);
+  x.beginPath(); x.moveTo(m, 6); x.quadraticCurveTo(m + 7, m - 7, TS - 6, m); x.quadraticCurveTo(m + 7, m + 7, m, TS - 6); x.quadraticCurveTo(m - 7, m + 7, 6, m); x.quadraticCurveTo(m - 7, m - 7, m, 6);
+  x.fillStyle = '#fff'; x.fill();
+  return c; })();
 C.gold = (() => { const [c, x] = cnv();
   x.fillStyle = rg(x, TS / 2, TS / 2, 0, TS / 2, TS / 2, TS / 2, [[0, 'rgba(255,220,120,.55)'], [1, 'rgba(255,220,120,0)']]); x.fillRect(0, 0, TS, TS);
   flower(x, TS / 2, TS / 2, TS * .46, '#A8650A');   // kontur
@@ -124,25 +192,27 @@ C.petal = (() => { const [c, x] = cnv();
   x.translate(TS / 2, TS / 2); x.beginPath(); x.moveTo(0, TS * .42); x.bezierCurveTo(TS * .34, TS * .1, TS * .22, -TS * .38, 0, -TS * .44); x.bezierCurveTo(-TS * .22, -TS * .38, -TS * .34, TS * .1, 0, TS * .42);
   const g = x.createLinearGradient(0, -TS * .44, 0, TS * .42); g.addColorStop(0, '#F9B7D3'); g.addColorStop(1, '#E6559A'); x.fillStyle = g; x.fill();
   return c; })();
-C.virus = (() => { const [c, x] = cnv(), cx = TS / 2, cy = TS / 2, r = TS * .28;
-  x.lineCap = 'round';
-  for (let i = 0; i < 9; i++) {
-    const a = i / 9 * Math.PI * 2 - Math.PI / 2, ca = Math.cos(a), sa = Math.sin(a);
-    x.strokeStyle = '#B8401F'; x.lineWidth = 7; x.beginPath(); x.moveTo(cx + ca * r * .8, cy + sa * r * .8); x.lineTo(cx + ca * r * 1.42, cy + sa * r * 1.42); x.stroke();
-    x.fillStyle = '#FFB13D'; x.beginPath(); x.arc(cx + ca * r * 1.48, cy + sa * r * 1.48, TS * .06, 0, 6.28); x.fill();
-    x.lineWidth = 3; x.stroke();
-  }
-  x.beginPath(); x.arc(cx, cy, r, 0, 6.28);
-  x.fillStyle = rg(x, cx - r * .35, cy - r * .4, 3, cx, cy, r, [[0, '#FFB07A'], [.6, '#F2683A'], [1, '#C8432A']]); x.fill();
-  x.lineWidth = 7; x.strokeStyle = '#8A2A12'; x.stroke();
-  eyes(x, cx, cy - r * .05, r * .38, r * .24, 'grumpy');
-  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .03; x.beginPath(); x.arc(cx, cy + r * .6, r * .2, Math.PI + .5, -.5); x.stroke();
+// mukus damlası (tahtada gezinen): sarımsı, yarı saydam, güler yüzlü damla. Virüslere yapışıp onları yakalar. (Kodda tür adı hâlâ 'virus'.)
+C.virus = (() => { const [c, x] = cnv(), cx = TS / 2;
+  const drop = new Path2D(); drop.moveTo(cx, TS * .1); drop.bezierCurveTo(TS * .66, TS * .3, TS * .86, TS * .5, TS * .86, TS * .64);
+  drop.bezierCurveTo(TS * .86, TS * .84, TS * .7, TS * .94, cx, TS * .94); drop.bezierCurveTo(TS * .3, TS * .94, TS * .14, TS * .84, TS * .14, TS * .64);
+  drop.bezierCurveTo(TS * .14, TS * .5, TS * .34, TS * .3, cx, TS * .1); drop.closePath();
+  x.fillStyle = rg(x, TS * .4, TS * .5, 4, cx, TS * .62, TS * .44, [[0, '#FFF8C8'], [.55, '#F6DA62'], [1, '#D6A824']]); x.fill(drop);
+  x.lineWidth = 8; x.strokeStyle = '#94700F'; x.lineJoin = 'round'; x.stroke(drop);
+  x.fillStyle = 'rgba(255,255,255,.85)'; x.beginPath(); x.ellipse(TS * .34, TS * .5, TS * .05, TS * .1, .35, 0, 6.28); x.fill();
+  x.beginPath(); x.arc(TS * .37, TS * .67, TS * .025, 0, 6.28); x.fill();
+  eyes(x, cx, TS * .63, TS * .12, TS * .075, 'happy');
+  x.fillStyle = 'rgba(255,140,120,.5)'; for (const s of [-1, 1]) { x.beginPath(); x.ellipse(cx + s * TS * .23, TS * .74, TS * .055, TS * .035, 0, 0, 6.28); x.fill(); }
+  x.strokeStyle = '#2B0F22'; x.lineWidth = TS * .03; x.lineCap = 'round'; x.beginPath(); x.arc(cx, TS * .74, TS * .06, .3, Math.PI - .3); x.stroke();
   return c; })();
-// virüs yapışmış mukus: hafif mor ton + köşede küçük virüs
-C.infected = C.mucus.map(m => { const [c, x] = cnv();
-  x.drawImage(m, 0, 0);
-  x.globalCompositeOperation = 'source-atop'; x.fillStyle = 'rgba(130,60,170,.28)'; x.fillRect(0, 0, TS, TS);
-  x.globalCompositeOperation = 'source-over'; x.drawImage(C.virus, TS * .5, -TS * .02, TS * .52, TS * .52);
+// mukusa yakalanmış virüs: virüs, sarımsı yarı saydam bir mukus kabarcığının içinde
+C.infected = C.mucus.map((m, i) => { const [c, x] = cnv(), rnd = seeded(51 + i);
+  x.drawImage(m, TS * .08, TS * .08, TS * .84, TS * .84);
+  const glob = blobPath(TS / 2, TS / 2, TS * .45, 5, .05, rnd);
+  x.fillStyle = rg(x, TS * .38, TS * .34, 4, TS / 2, TS / 2, TS * .46, [[0, 'rgba(255,250,210,.25)'], [.7, 'rgba(246,218,98,.42)'], [1, 'rgba(214,168,36,.6)']]); x.fill(glob);
+  x.lineWidth = 6; x.strokeStyle = '#94700F'; x.stroke(glob);
+  x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineWidth = 5; x.lineCap = 'round'; x.beginPath(); x.arc(TS / 2, TS / 2, TS * .36, Math.PI * 1.1, Math.PI * 1.4); x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.75)'; for (const [px, py, pr] of [[.72, .3, .03], [.78, .4, .018], [.26, .74, .022]]) { x.beginPath(); x.arc(TS * px, TS * py, TS * pr, 0, 6.28); x.fill(); }
   return c; });
 
 // saponin köpüğü

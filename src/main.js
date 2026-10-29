@@ -27,7 +27,7 @@ const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
 const COMBO_WINDOW = 2600;
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const DEBUG = /debug/.test(location.hash) || /debug/.test(location.search);
-const sfx = name => { if (!prog.muted && mode !== 'demo') playSfx(name); };
+const sfx = (name, k) => { if (!prog.muted && mode !== 'demo') playSfx(name, k); };
 const buzz = ms => { if (prog.vibrate && navigator.vibrate) try { navigator.vibrate(ms); } catch {} };
 
 // DOM ikonları aynı dokulardan
@@ -54,11 +54,14 @@ app.ticker.maxFPS = 0;
 
 const T = {};
 for (const k of ['ball', 'face', 'soft', 'dot', 'septum', 'crust', 'plug', 'portal', 'petal', 'bubble', 'bloom', 'swell']) T[k] = PIXI.Texture.from(C[k]);
-// tahtadaki öğeler haleli: toplanabilirler açık bir ışıkla, virüs koyu bir gölgeyle zeminden ayrılır
-const HALO_RGB = { mucus: '255,250,214', infected: '236,220,255', gold: '255,236,160', serum: '226,244,255', breeze: '222,250,232', immune: '240,234,255' };
+// tahtadaki öğeler haleli: açık bir ışıkla zeminden ayrılır.
+// Adlar eski: 'mucus' toplanan virüs, 'infected' mukusa yakalanmış virüs, 'virus' (viruses dizisi) gezinen mukus damlası.
+const HALO_RGB = { mucus: '255,250,214', infected: '255,244,196', gold: '255,236,160', serum: '226,244,255', breeze: '222,250,232', immune: '240,234,255' };
 for (const k of ['gold', 'serum', 'breeze', 'immune']) T[k] = PIXI.Texture.from(halo(C[k], HALO_RGB[k], .85));
-T.virus = PIXI.Texture.from(halo(C.virus, '60,8,30', .4)); T.virusBare = PIXI.Texture.from(C.virus);   // virusBare: akışın taşıdığı virüs
+T.virus = PIXI.Texture.from(halo(C.virus, '255,248,200', .6)); T.virusBare = PIXI.Texture.from(C.infected[0]);   // virusBare: akışın taşıdığı yakalanmış virüs
 T.mucus = C.mucus.map(c => PIXI.Texture.from(halo(c, HALO_RGB.mucus, .85)));
+T.mucusScared = C.mucusScared.map(c => PIXI.Texture.from(halo(c, HALO_RGB.mucus, .85)));
+T.mucusDizzy = C.mucusDizzy.map(c => PIXI.Texture.from(c)); T.sparkle = PIXI.Texture.from(C.sparkle);
 T.infected = C.infected.map(c => PIXI.Texture.from(halo(c, HALO_RGB.infected, .85)));
 T.polyp = C.polyp.map(c => PIXI.Texture.from(c));
 // sıklamen yılanın parçaları; taç yapraklı olanlar görünümün rengine boyanır (yilanDoku)
@@ -121,6 +124,14 @@ const BUBBLES = [];
 const PARTS = [];
 for (let i = 0; i < 200; i++) { const s = new PIXI.Sprite(T.dot); s.anchor.set(.5); s.visible = false; fxLayer.addChild(s); PARTS.push({ s, vx: 0, vy: 0, vr: 0, life: 0, max: 1, size: 1 }); }
 for (let i = 0; i < 70; i++) { const s = new PIXI.Sprite(T.bubble); s.anchor.set(.5); s.visible = false; fxLayer.addChild(s); BUBBLES.push({ s, vx: 0, vy: 0, life: 0, max: 1, size: 1, ph: 0 }); }
+// yıkanan virüs: köpük baloncuğuna kapanıp dönerek yükselir, pırıltıyla patlar
+const WASH = [];
+for (let i = 0; i < 6; i++) {
+  const v = new PIXI.Sprite(T.mucusDizzy[0]), b = new PIXI.Sprite(T.bubble); v.anchor.set(.5); b.anchor.set(.5); v.visible = b.visible = false;
+  fxLayer.addChild(v, b); WASH.push({ v, b, life: 0, x: 0, y: 0, ph: 0 });
+}
+const SPARKS = [];
+for (let i = 0; i < 36; i++) { const s = new PIXI.Sprite(T.sparkle); s.anchor.set(.5); s.visible = false; fxLayer.addChild(s); SPARKS.push({ s, life: 0, max: 1, wait: 0, size: 1 }); }
 const POPS = [];
 for (let i = 0; i < 8; i++) {
   const t = new PIXI.BitmapText({ text: '+0', style: { fontFamily: 'Baloo 2, Arial', fontSize: 34, fontWeight: '800', fill: 0xffffff, stroke: { color: 0x3A1530, width: 6 } } });
@@ -161,7 +172,7 @@ for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
   if (d > CORNER + .2) cornerWall[y * COLS + x] = 1; else if (d > CORNER - .3) rimCell[y * COLS + x] = 1;
 }
 let items = [], movers = [], viruses = [];
-let carriedAt = [], hurtUntil = 0;   // carriedAt: virüslü mukusun yutulduğu adım (gövdede ilerler)
+let carriedAt = [];   // carriedAt: mukusa yakalanmış virüsün yutulduğu adım (gövdede ilerler)
 let lv = null;                         // bölüm istatistikleri
 let gameSneezes = 0;
 
@@ -476,7 +487,7 @@ function setupBoard(c) {
   visited.fill(0); freshCell.fill(0);
   for (const b of BLOOMS) { b.life = 0; b.s.visible = false; }
   for (const it of items) it.s.destroy(); items = [];
-  for (const v of viruses) v.s.destroy(); viruses = []; carriedAt = []; hurtUntil = 0;
+  for (const v of viruses) v.s.destroy(); viruses = []; carriedAt = [];
   len = 4; grow = 0; dir = moveDir = 0; queue.length = 0; stepCount = 0;
   const [sx, sy] = c.start || [COLS >> 1, ROWS - 4];
   for (let i = 0; i < len; i++) { bx[i] = sx; by[i] = sy + i; px[i] = bx[i]; py[i] = by[i]; }
@@ -564,25 +575,27 @@ function spawn(type) {
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       if (occupied(x, y) || rimCell[y * COLS + x]) continue;
       if (pass === 0 && Math.abs(x - bx[0]) + Math.abs(y - by[0]) < 3) continue;
-      if (pass === 0 && movers.some(m => m.y === y)) continue;          // tıkaç hattına mukus bırakma
-      if (pass === 0 && tightCell(x, y)) continue;                      // köşeye ve çıkmaza mukus bırakma: uzun akışla dönmek zor
+      if (pass === 0 && movers.some(m => m.y === y)) continue;          // tıkaç hattına öğe bırakma
+      if (pass === 0 && tightCell(x, y)) continue;                      // köşeye ve çıkmaza öğe bırakma: uzun akışla dönmek zor
       cand.push(x, y);
     }
     if (!cand.length) continue;
     const k = ((rnd() * cand.length / 2) | 0) * 2;
-    const vr = (rnd() * 3) | 0, tex = type === 'mucus' ? T.mucus[vr] : T[type];
-    const s = new PIXI.Sprite(tex); s.anchor.set(.5); itemLayer.addChild(s);
-    const life = type === 'gold' ? 6000 : type === 'serum' || type === 'breeze' || type === 'immune' ? 8000 : Infinity;
-    const it = { type, x: cand[k], y: cand[k + 1], s, born: gameTime, life, ph: Math.random() * 6.28, pop: 0, var: vr, infected: false };
-    placeItem(it, true); items.push(it);
-    return it;
+    return addItem(type, cand[k], cand[k + 1], (rnd() * 3) | 0);
   }
   return null;
+}
+function addItem(type, x, y, vr) {
+  const s = new PIXI.Sprite(type === 'mucus' ? T.mucus[vr] : T[type]); s.anchor.set(.5); itemLayer.addChild(s);
+  const life = type === 'gold' ? 6000 : type === 'serum' || type === 'breeze' || type === 'immune' ? 8000 : Infinity;
+  const it = { type, x, y, s, born: gameTime, life, ph: Math.random() * 6.28, pop: 0, var: vr, infected: false, rep: gameTime + (cfg.replicate || 0) };
+  placeItem(it, true); items.push(it);
+  return it;
 }
 function placeItem(it, snap) {
   it.tx = (it.x + .5) * cell; it.ty = (it.y + .5) * cell;
   if (snap) { it.cx = it.tx; it.cy = it.ty; it.s.position.set(it.tx, it.ty); }
-  it.base = cell * HALO * (it.type === 'mucus' ? 1.5 : 1.45);   // doku haleli: öğenin kendisi hücreden biraz büyük görünür
+  it.base = cell * HALO * (it.type === 'mucus' ? 1.65 : 1.45);   // doku haleli: öğenin kendisi hücreden biraz büyük görünür; virüsün gövdesi kollar yüzünden dokuda küçük
 }
 function removeItem(it) { it.s.destroy(); const i = items.indexOf(it); if (i >= 0) items.splice(i, 1); }
 const countType = t => items.reduce((n, it) => n + (it.type === t), 0);
@@ -591,7 +604,7 @@ function openExit() {
   exitOpen = true;
   if (cfg.shape) openOstium(); else pickExit();
   gateLayer.visible = true; placeGate();
-  for (const it of items.slice()) if ((it.type === 'mucus' && !it.infected) || it.type === 'immune') removeItem(it);   // virüslü olanlar kalır, hâlâ taşınabilir
+  for (const it of items.slice()) if ((it.type === 'mucus' && !it.infected) || it.type === 'immune') removeItem(it);   // yakalanmış virüsler kalır, hâlâ taşınabilir
   callout('Ostium açıldı!', 'Akışı parlayan çıkışa götür'); sfx('open'); hudBar();
 }
 function pickExit() {
@@ -620,15 +633,15 @@ function placeGate() {
    ========================================================================= */
 const IMMUNE_MS = 8000;
 function maybeImmune() {
-  // sinüste virüs varken çıkar: serbest, mukusa yapışmış ya da akışın taşıdığı
-  const virusNow = viruses.length || carriedAt.length || items.some(it => it.infected);
+  // sinüste virüs varken çıkar: serbest, mukusa yakalanmış ya da akışın taşıdığı
+  const virusNow = countType('mucus') || carriedAt.length;
   if (!cfg.immune || exitOpen || !virusNow || countType('immune') || gameTime < immuneUntil || Math.random() >= cfg.immune) return;
   if (spawn('immune') && !lv.immuneSeen++) callout('Bağışıklık hücresi geldi', 'Topla, virüsler bir süre çoğalamasın');
 }
 function takeImmune(it) {
   const cx = (it.x + .5) * cell, cy = (it.y + .5) * cell;
   removeItem(it); lv.immunes++; immuneUntil = gameTime + IMMUNE_MS;
-  for (const v of viruses) burst((v.x + .5) * cell, (v.y + .5) * cell, 8, 0xB49AEE);   // savunma virüslere ulaşır
+  for (const v of items) if (v.type === 'mucus' && !v.infected) burst((v.x + .5) * cell, (v.y + .5) * cell, 8, 0xB49AEE);   // savunma virüslere ulaşır
   burst(cx, cy, 16, 0xB49AEE); sfx('immune');
   callout('Bağışıklık devrede', 'Virüsler bir süre çoğalamaz');
   prog.immunes++; if (prog.immunes >= 10) award('immune10');
@@ -670,14 +683,14 @@ function step() {
   if (moverAt(nx, ny)) return die('plug');
   const willGrow = grow > 0;
   for (let i = 1; i < (willGrow ? len : len - 1); i++) if (bx[i] === nx && by[i] === ny) return die('self');
-  const hitV = gameTime >= hurtUntil ? virusAt(nx, ny) : null;
+  const hitV = virusAt(nx, ny);
   advance(dir, willGrow, nx, ny); moveDir = dir;
   if (!willGrow) vacated(px[prevLen - 1], py[prevLen - 1]);
   if (willGrow) grow--;
   if (len > lv.maxLen) lv.maxLen = len;
   visit(nx, ny);
   const it = itemAt(nx, ny); if (it) consume(it);
-  if (hitV) virusHit(hitV);
+  if (hitV) bumpVirus(hitV);
   if (gameTime < breezeUntil) pullItems();
   stepMovers(); stepViruses();
   if (mode !== 'demo' && len >= 40) award('len40');
@@ -716,14 +729,18 @@ function consume(it) {
   headPulse = 1;
   const tier = 1 + levelIdx;
   if (it.type === 'mucus') {
-    eaten += it.infected && mode !== 'demo' ? 2 : 1; grow += 2;   // virüslü mukus tıkanıklığı iki kat azaltır
+    eaten += it.infected && mode !== 'demo' ? 2 : 1; grow += 2;   // mukusa yakalanmış virüs temizliği iki kat ilerletir
     combo = (gameTime - lastEat < COMBO_WINDOW) ? combo + 1 : 1; lastEat = gameTime;
     let pts = 10 * tier + (combo > 1 ? combo * 5 : 0);
     if (it.infected) {
       lv.carried++; carriedAt.push(stepCount); pts += 20 * tier;
       if (lv.carried === 1) callout('Virüs yakalandı!', 'Sinüs rahatladı, çıkışa taşı');
-    }
-    burst(cx, cy, 7, 0xC3CF3E); foam(cx, cy, 8, .6); sfx('eat');
+      burst(cx, cy, 7, 0xF2D65A); foam(cx, cy, 6, .6); sparkle(cx, cy, 3);
+    } else washVirus(it);
+    sfx('clean', combo);
+    if (mode !== 'demo' && (combo === 2 || combo === 5)) popup(combo === 2 ? 'Temiz!' : 'Pırıl pırıl!', cx, cy - cell * 1.1, 0xC9F7E6);
+    const half = target / 2;
+    if (mode !== 'demo' && eaten >= half && eaten - (it.infected ? 2 : 1) < half && eaten < target) callout('Yarısı temizlendi', 'Sinüs rahatlıyor, böyle devam');
     if (mode !== 'demo') award('first');
     if (combo >= 3 && combo % 3 === 0) {
       boostUntil = gameTime + 1400; pts += 25 * tier;
@@ -753,7 +770,7 @@ function consume(it) {
     prog.serums++; if (prog.serums >= 5) award('serum5');
   } else if (it.type === 'breeze') {
     breezeUntil = gameTime + 6000; burst(cx, cy, 16, 0x2FAE6E); sfx('breeze'); removeItem(it);
-    callout('Ferah esinti', 'Yakındaki mukuslar sana geliyor');
+    callout('Ferah esinti', 'Yakındaki virüsler sana geliyor');
   } else if (it.type === 'immune') takeImmune(it);
   hudScore(); hudBar();
 }
@@ -766,7 +783,9 @@ function harden(it) {
 }
 
 /* =========================================================================
-   VİRÜSLER: mukusa yapışır, akışla dışarı taşınır (akış virüsü yok etmez)
+   MUKUS DAMLALARI ve VİRÜSLER (adlar eski: viruses dizisi damlalar, 'mucus' türündeki öğeler virüsler)
+   Damlalar gezinir, serbest virüse yapışıp onu yakalar; yakalanan virüsü akış dışarı taşır (akış virüsü yok etmez).
+   Serbest virüsler zamanla yanlarında çoğalır ve temizliği geriletir; bağışıklık hücresi bunu bir süre durdurur.
    ========================================================================= */
 function virusAt(x, y) { for (const v of viruses) if (v.x === x && v.y === y) return v; return null; }
 function virusCanEnter(x, y) {
@@ -777,7 +796,7 @@ function virusCanEnter(x, y) {
 const emptyCell = (x, y) => virusCanEnter(x, y) && !itemAt(x, y);
 function addVirus(x, y) {
   const s = new PIXI.Sprite(T.virus); s.anchor.set(.5); virusLayer.addChild(s);
-  const v = { x, y, px: x, py: y, s, d: (Math.random() * 4) | 0, off: (Math.random() * 4) | 0, ph: Math.random() * 6.28, rep: gameTime + (cfg.replicate || 0), pop: 0 };
+  const v = { x, y, px: x, py: y, s, d: (Math.random() * 4) | 0, off: (Math.random() * 4) | 0, ph: Math.random() * 6.28, pop: 0 };
   viruses.push(v); return v;
 }
 function spawnVirus() {
@@ -797,7 +816,7 @@ function stepViruses() {
     const opts = [];
     for (let d = 0; d < 4; d++) if (virusCanEnter(v.x + DX[d], v.y + DY[d])) opts.push(d);
     if (!opts.length) continue;
-    let d = -1, m = null, md = 9;            // 8 hücre içindeki en yakın temiz mukusa yönel
+    let d = -1, m = null, md = 9;            // 8 hücre içindeki en yakın serbest virüse yönel
     for (const it of items) if (it.type === 'mucus' && !it.infected) { const k = Math.abs(it.x - v.x) + Math.abs(it.y - v.y); if (k < md) { md = k; m = it; } }
     if (m && Math.random() < .7) {
       const near = opts.filter(o => Math.abs(v.x + DX[o] - m.x) + Math.abs(v.y + DY[o] - m.y) < md);
@@ -812,34 +831,39 @@ function stepViruses() {
   }
 }
 function trapVirus(v, it) {
-  it.infected = true; it.s.texture = T.infected[it.var]; it.pop = .4;
-  burst((it.x + .5) * cell, (it.y + .5) * cell, 12, 0xF2683A); sfx('trap'); removeVirus(v);
-  if (!lv.trapped++) callout('Virüs mukusa yapıştı', 'Topla ve dışarı taşı');
+  it.infected = true; it.caught = gameTime; it.s.texture = T.infected[it.var]; it.pop = .4;
+  burst((it.x + .5) * cell, (it.y + .5) * cell, 12, 0xF2D65A); sfx('trap'); removeVirus(v);
+  spawnVirus();                          // sinüs yeni mukus üretir: damla sayısı azalmaz
+  if (!lv.trapped++) callout('Mukus virüsü yakaladı', 'Topla ve dışarı taşı');
 }
-function virusHit(v) {
-  hurtUntil = gameTime + 1500; lv.hits++;
-  const lost = Math.min(3, len - 4);
-  if (lost > 0) { burst((bx[len - 1] + .5) * cell, (by[len - 1] + .5) * cell, 10, 0xF2683A); len -= lost; prevLen = Math.min(prevLen, len); }
-  burst((bx[0] + .5) * cell, (by[0] + .5) * cell, 18, 0xF2683A);
-  flashG.alpha = .22; if (mode !== 'demo') quake(.55); sfx('hurt');
-  if (mode !== 'demo') buzz(30);
-  callout('Virüse çarptın', 'Akış kısaldı. Virüsü mukusa yakalat');
-  removeVirus(v); spawnVirus();          // virüs sekip uzağa savrulur
+// damlayı virüsü yakalamadan yutmak puan kaybettirir; ekranda yazı çıkmaz, yalnızca puan kutusu sarsılır. Damla kenara kayar.
+const BUMP_PTS = 15;
+function bumpVirus(v) {
+  lv.hits++;
+  burst((v.x + .5) * cell, (v.y + .5) * cell, 10, 0xF2D65A); sfx('bump');
+  removeVirus(v); spawnVirus();
+  if (mode === 'demo') return;
+  score = Math.max(0, score - BUMP_PTS * (1 + levelIdx)); hudScore(); buzz(20);
+  const el = $('hudScore'); el.classList.remove('minus'); void el.offsetWidth; el.classList.add('minus');
 }
 function updateViruses(dt) {
-  if (!cfg.virus) return;
-  if (cfg.replicate) for (const v of viruses.slice()) {
-    if (gameTime < immuneUntil) { v.rep += dt; continue; }   // bağışıklık devredeyken çoğalamaz
-    if (gameTime < v.rep) continue;
-    v.rep = gameTime + cfg.replicate;
-    if (viruses.length >= cfg.virusMax) continue;
+  if (!cfg.replicate || exitOpen) return;
+  const guarded = gameTime < immuneUntil;
+  let free = items.reduce((n, it) => n + (it.type === 'mucus' && !it.infected), 0);
+  for (const it of items.slice()) {
+    if (it.type !== 'mucus' || it.infected) continue;
+    if (guarded) { it.rep += dt; continue; }   // bağışıklık devredeyken çoğalamaz
+    if (gameTime < it.rep) continue;
+    it.rep = gameTime + cfg.replicate;
+    if (free >= cfg.virusMax) continue;
     const opts = [];
-    for (let d = 0; d < 4; d++) if (emptyCell(v.x + DX[d], v.y + DY[d])) opts.push(d);
+    for (let d = 0; d < 4; d++) { const X = it.x + DX[d], Y = it.y + DY[d]; if (emptyCell(X, Y) && !rimCell[Y * COLS + X]) opts.push(d); }
     if (!opts.length) continue;
-    const d = opts[(Math.random() * opts.length) | 0], n = addVirus(v.x + DX[d], v.y + DY[d]);
-    n.px = v.x; n.py = v.y; lv.replicated++;
-    burst((n.x + .5) * cell, (n.y + .5) * cell, 10, 0xF2683A); sfx('replicate');
-    if (lv.replicated === 1) callout('Virüs çoğaldı', 'Bağışıklık hücresi çoğalmayı durdurur');
+    const d = opts[(Math.random() * opts.length) | 0], n = addItem('mucus', it.x + DX[d], it.y + DY[d], (Math.random() * 3) | 0);
+    n.cx = it.cx; n.cy = it.cy;            // yeni virüs ötekinin içinden kayarak çıkar
+    free++; target++; lv.replicated++; hudBar();   // çoğalan virüs temizliği geriletir (hedef büyür)
+    burst((n.x + .5) * cell, (n.y + .5) * cell, 10, 0x92D634); sfx('replicate');
+    if (lv.replicated === 1) callout('Virüs çoğaldı', 'Temizlik geriledi. Bağışıklık hücresi çoğalmayı durdurur');
     maybeImmune();
   }
 }
@@ -847,13 +871,10 @@ function renderViruses(a, dt, now) {
   for (const v of viruses) {
     v.pop = Math.min(1, v.pop + dt / 280);
     const popS = v.pop < 1 ? 1 - Math.pow(1 - v.pop, 3) + Math.sin(v.pop * Math.PI) * .25 : 1;
-    const left = v.rep - gameTime;     // çoğalmadan hemen önce şişip titrer
-    const guarded = gameTime < immuneUntil;   // bağışıklık etkisi: virüsler soluk, çoğalma titremesi yok
-    v.s.tint = guarded ? 0xD8E6FF : 0xFFFFFF; v.s.alpha = guarded ? .75 : 1;
-    const swell = cfg.replicate && !guarded && left < 1500 ? (1 - Math.max(0, left) / 1500) * .22 * (.6 + .4 * Math.sin(now * .03)) : 0;
     v.s.position.set((v.px + (v.x - v.px) * a + .5) * cell, (v.py + (v.y - v.py) * a + .5) * cell);
-    v.s.width = v.s.height = cell * HALO * 1.3 * popS * (1 + .05 * Math.sin(now * .006 + v.ph) + swell);
-    v.s.rotation = Math.sin(now * .002 + v.ph) * .5;
+    v.s.width = cell * HALO * 1.3 * popS * (1 + .05 * Math.sin(now * .006 + v.ph));
+    v.s.height = cell * HALO * 1.3 * popS * (1 - .05 * Math.sin(now * .006 + v.ph));   // damla yaylanır
+    v.s.rotation = Math.sin(now * .002 + v.ph) * .2;
   }
 }
 
@@ -894,7 +915,7 @@ function distField(sx, sy) {
 }
 function botDir() {
   const hx = bx[0], hy = by[0];
-  // hedef: çıkış açıksa çıkış, değilse yol mesafesiyle en yakın mukus, altın ya da bağışıklık hücresi; virüsten ve tıkaçtan kaçın.
+  // hedef: çıkış açıksa çıkış, değilse yol mesafesiyle en yakın virüs, altın ya da bağışıklık hücresi; mukus damlasından ve tıkaçtan kaçın.
   // Mesafe duvarların etrafından ölçülür (şekilli sinüslerde düz mesafe yanıltır).
   let tx, ty, md = 1e9;
   if (exitOpen) { tx = Math.min(COLS - 1, Math.max(0, exitX)); ty = Math.min(ROWS - 1, Math.max(0, exitY)); }
@@ -914,7 +935,7 @@ function botDir() {
     const space = flood(nx, ny, 120), it = itemAt(nx, ny);
     const td = toTarget ? toTarget[ny * COLS + nx] : 0;
     let s = (toTarget ? (td >= 0 ? -td : -200) : 0) + (space < len + 6 ? -500 + space : 0) + (d === moveDir ? .3 : 0);
-    if (gameTime >= hurtUntil && virusAt(nx, ny)) s -= 100;
+    if (virusAt(nx, ny)) s -= 100;
     if (moverAt(nx - 1, ny) || moverAt(nx + 1, ny)) s -= 60;
     if (s > bestS) { bestS = s; best = d; }
   }
@@ -1092,6 +1113,7 @@ function foam(x, y, n, spread) {
     b.s.visible = true; b.s.position.set(x + (Math.random() - .5) * spread * cell, y + (Math.random() - .5) * spread * cell);
     b.vx = (Math.random() - .5) * .012 * cell; b.vy = -(.006 + Math.random() * .014) * cell;
     b.max = b.life = 650 + Math.random() * 550; b.size = cell * (.16 + Math.random() * .26); b.ph = Math.random() * 6.28;
+    b.s.width = b.s.height = b.size * .6; b.s.alpha = .9;   // güncellemeden önce çizilirse dokunun kendi boyutunda (kocaman) görünmesin
   }
 }
 // akışın ilk geçtiği hücre, kuyruk oradan ayrılınca kısa süre çiçek açar
@@ -1106,6 +1128,24 @@ function vacated(x, y) {
   const b = BLOOMS[bloomCursor = (bloomCursor + 1) % BLOOMS.length];
   b.s.visible = true; b.s.position.set((x + .5) * cell, (y + .5) * cell); b.s.rotation = Math.random() * 6.28;
   b.s.tint = skin.classic || skin.petal === -1 ? 0xFFC2DD : mixc(rgb(skin.petal), WHITE, .45); b.life = 520;
+}
+const WASH_MS = 850;
+function washVirus(it) {
+  const w = WASH.find(o => o.life <= 0) || WASH[0];
+  // akışın yönüne dik, rastgele bir yana sürüklenir: başın ve puan yazısının altında kalmasın
+  const side = Math.random() < .5 ? -1 : 1;
+  w.life = WASH_MS; w.x = w.vx = it.cx; w.y = w.vy = it.cy; w.ph = Math.random() * 6.28; w.size = it.base / HALO;
+  w.dx = -DY[moveDir] * side; w.dy = DX[moveDir] * side;
+  w.v.texture = T.mucusDizzy[it.var]; w.v.visible = w.b.visible = true;
+  burst(it.cx, it.cy, 6, 0x9BD443); foam(it.cx, it.cy, 4, .6);
+}
+let sparkCursor = 0;
+function sparkle(x, y, n) {
+  for (let k = 0; k < n; k++) {
+    const p = SPARKS[sparkCursor = (sparkCursor + 1) % SPARKS.length];
+    p.s.position.set(x + (Math.random() - .5) * cell * 1.2, y + (Math.random() - .5) * cell * 1.2); p.s.visible = false; p.s.rotation = Math.random() * .6;
+    p.s.tint = Math.random() < .5 ? 0xFFFFFF : 0xFFF6C8; p.wait = k * 70 + Math.random() * 60; p.max = p.life = 520 + Math.random() * 200; p.size = cell * (.65 + Math.random() * .4);
+  }
 }
 let popCursor = 0;
 function popup(txt, x, y, color) {
@@ -1158,7 +1198,6 @@ function rgb(c) { return [(c >> 16) & 255, (c >> 8) & 255, c & 255]; }
 function mixc(a, b, t) { return ((a[0] + (b[0] - a[0]) * t) << 16) | ((a[1] + (b[1] - a[1]) * t) << 8) | (a[2] + (b[2] - a[2]) * t); }
 function hsl(h) { const f = n => { const k = (n + h * 12) % 12; return Math.round(255 * (.62 - .38 * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); }; return (f(0) << 16) | (f(8) << 8) | f(4); }
 const WHITE = [255, 255, 255], BOOSTC = rgb(0xF06AAE);
-const WILT = rgb(0x9C8F96);
 let skin = SKINS[0], skinBody = WHITE;
 let headRot = Math.PI, headFlip = 1, headFlipS = 1, headPulse = 0;
 
@@ -1279,11 +1318,11 @@ const flipFor = (cos, cur) => cos < -.3 ? -1 : cos > .3 ? 1 : cur;
 function renderSnake(alpha, dt, now) {
   for (let i = 0; i < len; i++) {
     let fx = i < prevLen ? px[i] : bx[i], fy = i < prevLen ? py[i] : by[i];
-    if (Math.abs(fx - bx[i]) + Math.abs(fy - by[i]) > 1.5) { fx = bx[i]; fy = by[i]; }   // ani konum değişimi (ör. virüs çarpınca kısalma): sıçra
+    if (Math.abs(fx - bx[i]) + Math.abs(fy - by[i]) > 1.5) { fx = bx[i]; fy = by[i]; }   // ani konum değişimi: sıçra
     ix[i] = fx + (bx[i] - fx) * alpha; iy[i] = fy + (by[i] - fy) * alpha;
   }
-  const boosting = gameTime < boostUntil, hurt = gameTime < hurtUntil;
-  const flower = !skin.classic, wilt = hurt ? mixc(WHITE, WILT, .5) : 0xffffff;
+  const boosting = gameTime < boostUntil;
+  const flower = !skin.classic;
   const hx = (ix[0] + .5) * cell, hy = (iy[0] + .5) * cell;
   headPulse = Math.max(0, headPulse - dt * .004);
   stemMesh.visible = tailMesh.visible = decoLayer.visible = budLayer.visible = headFlower.visible = flower;
@@ -1294,7 +1333,7 @@ function renderSnake(alpha, dt, now) {
     const [h0, h1] = YILAN.stem.h, B = YILAN.stem.band * cell * YK.stem;
     fillRope(stemMesh, 0, uTail + .05, u => B * (h0 + (h1 - h0) * Math.min(1, u / Math.max(uTail, .01))));
     fillRope(tailMesh, uTail, uEnd, () => B * h1);
-    stemMesh.tint = tailMesh.tint = wilt;
+    stemMesh.tint = tailMesh.tint = 0xffffff;
     let k = 0;
     for (; ; k++) {
       const [j, u0] = decoAt(k), u = u0 * YK.gap, start = k < START.length;
@@ -1306,7 +1345,7 @@ function renderSnake(alpha, dt, now) {
       if (d.tex !== tex) { d.tex = tex; d.s.texture = yilanDoku(DECO_TEX[j], pc); }
       d.s.visible = d.g > .02; d.s.position.set(p.x, p.y);
       d.s.rotation = Math.atan2(p.ty, p.tx) + Math.sin(now * .003 + k * 1.7) * .05 * d.g;
-      d.s.scale.set(sc * YK.deco * d.g, sc * YK.deco * d.g * d.f); d.s.tint = wilt;
+      d.s.scale.set(sc * YK.deco * d.g, sc * YK.deco * d.g * d.f); d.s.tint = 0xffffff;
     }
     for (; k < DECOS.length; k++) { DECOS[k].s.visible = false; DECOS[k].g = 0; }
     // çiçek ileri yöne döner, ağzı önde; yürürken hafifçe nefes alır, yiyince açılır
@@ -1314,11 +1353,11 @@ function renderSnake(alpha, dt, now) {
     const target = mv > .05 && mv < 1.5 ? Math.atan2(vy, vx) : Math.atan2(DY[moveDir], DX[moveDir]);
     headRot += Math.atan2(Math.sin(target - headRot), Math.cos(target - headRot)) * Math.min(1, dt * .025);
     headFlip = flipFor(-Math.cos(headRot), headFlip); headFlipS += (headFlip - headFlipS) * Math.min(1, dt * .012);
-    const open = (boosting ? 1.12 : 1) * (hurt ? .88 : 1) * (1 + headPulse * .1), fl = Math.sin(now * .018) * .03;
+    const open = (boosting ? 1.12 : 1) * (1 + headPulse * .1), fl = Math.sin(now * .018) * .03;
     headFlower.texture = yilanDoku('bas', petalOf(0, now));
     headFlower.position.set(hx, hy); headFlower.rotation = headRot + Math.PI;
     headFlower.scale.set(sc * YK.head * open * (1 + fl), sc * YK.head * open * (1 - fl * .6) * headFlipS);
-    headFlower.tint = wilt;
+    headFlower.tint = 0xffffff;
   } else {
     // klasik akış: toplardan gövde
     const n = (len - 1) * 2;
@@ -1339,7 +1378,7 @@ function renderSnake(alpha, dt, now) {
     headFace.position.set(hx + lx, hy + ly); headFace.width = headFace.height = cell * 1.2;
     headFace.scale.x = Math.abs(headFace.scale.x) * (moveDir === 3 ? -1 : 1);
   }
-  // yutulan virüs gövdede kuyruğa doğru ilerler, en eskisi en arkada
+  // yutulan (mukusa yakalanmış) virüs gövdede kuyruğa doğru ilerler, en eskisi en arkada
   for (let j = 0; j < carriedAt.length; j++) {
     let s = lumpPool[j]; if (!s) { s = new PIXI.Sprite(T.virusBare); s.anchor.set(.5); lumpLayer.addChild(s); lumpPool[j] = s; }
     const i = Math.max(1, Math.min(len - 1 - j, 1 + stepCount - carriedAt[j]));
@@ -1347,7 +1386,6 @@ function renderSnake(alpha, dt, now) {
     s.width = s.height = cell * .58; s.rotation = now * .002 + j * 1.3;
   }
   for (let j = carriedAt.length; j < lumpPool.length; j++) lumpPool[j].visible = false;
-  snakeLayer.alpha = hurt ? (Math.sin(now * .04) > 0 ? 1 : .45) : 1;
 }
 
 function updateFx(dt, now) {
@@ -1358,12 +1396,22 @@ function updateFx(dt, now) {
     const w = Math.sin(now * .005 + it.ph);
     let jx = 0;
     it.cx += (it.tx - it.cx) * ek; it.cy += (it.ty - it.cy) * ek;
-    if (it.type === 'mucus' && cfg.harden && running()) {
-      const left = cfg.harden - (gameTime - it.born);
+    let swell = 0;
+    if (it.infected && cfg.harden && running()) {   // virüsü yakalayan mukus bekledikçe sertleşir
+      const left = cfg.harden - (gameTime - it.caught);
       if (left < 2600) { const f = 1 - left / 2600; jx = Math.sin(now * .06) * cell * .06 * f; it.s.tint = mixc(WHITE, rgb(0xB39A60), f); }
+    } else if (it.type === 'mucus' && !it.infected && cfg.replicate) {   // serbest virüs çoğalmadan hemen önce şişip titrer; bağışıklıkta soluk
+      const guarded = gameTime < immuneUntil, left = it.rep - gameTime;
+      it.s.tint = guarded ? 0xD8E6FF : 0xFFFFFF; it.s.alpha = guarded ? .75 : 1;
+      if (!guarded && running() && left < 1500) swell = (1 - Math.max(0, left) / 1500) * .22 * (.6 + .4 * Math.sin(now * .03));
+    }
+    if (it.type === 'mucus' && !it.infected) {   // akış yaklaşınca virüs korkar ve titrer
+      const near = running() && Math.abs(it.x - bx[0]) + Math.abs(it.y - by[0]) <= 2;
+      it.s.texture = (near ? T.mucusScared : T.mucus)[it.var];
+      if (near) jx += Math.sin(now * .09 + it.ph) * cell * .045;
     }
     it.s.position.set(it.cx + jx, it.cy);
-    it.s.width = it.s.height = it.base * popS * (1 + .06 * w);
+    it.s.width = it.s.height = it.base * popS * (1 + .06 * w + swell);
     if (it.type !== 'mucus') {
       it.s.rotation = it.type === 'gold' ? now * .0015 : .14 * w;
       const left = it.born + it.life - gameTime;
@@ -1374,7 +1422,7 @@ function updateFx(dt, now) {
     const p = .5 + .5 * Math.sin(now * .006);
     gateGlow.alpha = exitOpen ? .5 + .5 * p : .12 + .08 * p; gateRing.alpha = exitOpen ? 1 : .4; gateRing.rotation = exitOpen ? -now * .005 : -now * .0008;
   }
-  // iltihap kızarıklığı oyun boyunca sabit (mukus topladıkça zemin açılmaz), yalnızca bölüm temizlenince kaybolur
+  // iltihap kızarıklığı oyun boyunca sabit (virüs topladıkça zemin açılmaz), yalnızca bölüm temizlenince kaybolur
   const inflam = mode !== 'demo' && !cleared ? .3 : 0;
   inflamG.alpha += (inflam - inflamG.alpha) * (cleared ? 1 - Math.exp(-dt * .004) : ek);
   if (cfg.shape) {   // şekilli bölümde kızarıklık ekranın tamamına değil yalnız sinüsün zeminine
@@ -1400,6 +1448,22 @@ function updateFx(dt, now) {
     const k = 1 - b.life / 520;
     b.s.width = b.s.height = cell * .62 * Math.min(1, k * 3.2) * (1 + .1 * Math.sin(k * Math.PI));
     b.s.alpha = k < .55 ? .95 : .95 * (1 - (k - .55) / .45); b.s.rotation += dt * .002;
+  }
+  for (const w of WASH) {
+    if (w.life <= 0) continue;
+    w.life -= dt;
+    if (w.life <= 0) { w.v.visible = w.b.visible = false; foam(w.vx, w.vy, 3, .4); sparkle(w.vx, w.vy, 5); continue; }
+    const k = 1 - w.life / WASH_MS, e = 1 - (1 - k) * (1 - k), s = w.size * (k < .12 ? 1 + k / .12 * .2 : 1.2 - .5 * (k - .12));
+    const sway = Math.sin(k * 6.28 + w.ph) * cell * .15;   // yana sürüklenip biraz yükselir, hafifçe salınır
+    w.vx = w.x + w.dx * cell * 1.7 * e + w.dy * sway; w.vy = w.y + w.dy * cell * 1.7 * e - cell * .5 * e - w.dx * sway;
+    w.v.position.set(w.vx, w.vy); w.v.width = w.v.height = s; w.v.rotation = k * 3.2;
+    w.b.position.set(w.vx, w.vy); w.b.width = w.b.height = s * 1.18 * Math.min(1, k / .14); w.b.alpha = k > .85 ? 1 - (k - .85) / .15 * .5 : .95;
+  }
+  for (const p of SPARKS) {
+    if (p.life <= 0) continue;
+    if (p.wait > 0) { p.wait -= dt; continue; }
+    p.s.visible = true; p.life -= dt; if (p.life <= 0) { p.s.visible = false; continue; }
+    const k = 1 - p.life / p.max; p.s.width = p.s.height = p.size * Math.sin(Math.PI * k); p.s.rotation += dt * .003; p.s.alpha = 1;
   }
   for (const p of POPS) { if (p.life <= 0) continue; p.life -= dt; p.t.y -= dt * .045 * (cell / 24); p.t.alpha = Math.min(1, p.life / 300); if (p.life <= 0) p.t.visible = false; }
   if (flashG.alpha > 0) flashG.alpha = Math.max(0, flashG.alpha - dt * .0011);
@@ -1432,7 +1496,7 @@ function simTick(dt) {
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i];
     if (gameTime > it.born + it.life) removeItem(it);
-    else if (it.type === 'mucus' && cfg.harden && state === 'play' && gameTime - it.born > cfg.harden) harden(it);
+    else if (it.infected && cfg.harden && state === 'play' && gameTime - it.caught > cfg.harden) harden(it);
   }
   if (state === 'play') updateViruses(dt);
   return alpha;
@@ -1503,8 +1567,8 @@ function hudLevel() { $('hudLevel').textContent = mode === 'versus' ? `${mp.roun
 function hudBar() {
   const fill = $('hudFill'), lab = $('hudBarLabel');
   if (exitOpen) { fill.classList.add('open'); fill.style.transform = 'scaleX(1)'; lab.textContent = 'Ostium açık'; return; }
-  const r = Math.max(0, 1 - eaten / target);
-  fill.classList.remove('open'); fill.style.transform = `scaleX(${r})`; lab.textContent = `Tıkanıklık %${Math.round(r * 100)}`;
+  const r = Math.min(1, eaten / target);   // temizlik: toplanan virüslerle dolar
+  fill.classList.remove('open'); fill.style.transform = `scaleX(${r})`; lab.textContent = `Temizlik %${Math.round(r * 100)}`;
 }
 function updateChips() {
   const set = (id, until, dur = 6000) => {
@@ -1514,7 +1578,7 @@ function updateChips() {
   set('chipSerum', slowUntil); set('chipBreeze', breezeUntil); set('chipImmune', immuneUntil, IMMUNE_MS);
   const vOn = !!cfg.virus && mode !== 'demo';
   $('chipVirus').classList.toggle('on', vOn); $('chipCarry').classList.toggle('on', vOn && carriedAt.length > 0);
-  if (vOn) { $('chipVirusN').textContent = viruses.length; $('chipCarryN').textContent = carriedAt.length; }
+  if (vOn) { $('chipVirusN').textContent = items.reduce((n, it) => n + (it.type === 'mucus' && !it.infected), 0); $('chipCarryN').textContent = carriedAt.length; }
 }
 function setMute() { $('muteWave').style.display = prog.muted ? 'none' : ''; $('btnMute').setAttribute('aria-label', prog.muted ? 'Sesi aç' : 'Sesi kapat'); }
 function hideHint() { if ($('hint').classList.contains('on')) { $('hint').classList.remove('on'); prog.seenTut = true; save(); } }
@@ -1633,9 +1697,9 @@ function syncSettings() {
   $('setVibrateRow').style.display = 'vibrate' in navigator ? '' : 'none';   // titreşimi desteklemeyen cihazda gizli
 }
 function openSettings(from) { settingsFrom = from; syncSettings(); show('scrSettings'); }
-$('setSound').onclick = () => { prog.muted = !prog.muted; save(); setMute(); syncSettings(); initAudio(); applyVolumes(); if (!prog.muted) playSfx('eat'); };
+$('setSound').onclick = () => { prog.muted = !prog.muted; save(); setMute(); syncSettings(); initAudio(); applyVolumes(); if (!prog.muted) playSfx('clean'); };
 $('setSfx').oninput = () => { prog.sfxVol = $('setSfx').value / 100; $('setSfxOut').textContent = $('setSfx').value + '%'; applyVolumes(); };
-$('setSfx').onchange = () => { save(); initAudio(); if (!prog.muted) playSfx('eat'); };   // bırakınca örnek ses
+$('setSfx').onchange = () => { save(); initAudio(); if (!prog.muted) playSfx('clean'); };   // bırakınca örnek ses
 $('setMusic').oninput = () => { prog.musicVol = $('setMusic').value / 100; $('setMusicOut').textContent = $('setMusic').value + '%'; applyVolumes(); save(); };
 $('setVibrate').onclick = () => { prog.vibrate = !prog.vibrate; save(); syncSettings(); buzz(30); };
 $('settingsBack').onclick = () => { if (settingsFrom === 'scrPause' && state === 'paused') show('scrPause'); else goHome(); };
@@ -1703,7 +1767,7 @@ addEventListener('blur', () => togglePause(true));
 /* =========================================================================
    ÇOK OYUNCULU (ÇEVRİM İÇİ): oda kodu ile 2-3 oyuncu, her biri kendi cihazından.
    Ekran oyunculara bölünür: kendi tahtan solda (dikey telefonda altta), diğerlerininki yanında canlı izlenir.
-   Herkes aynı bölümü aynı tohumla aynı anda başlatır; mukusu temizleyip ostiumdan ilk çıkan turu kazanır.
+   Herkes aynı bölümü aynı tohumla aynı anda başlatır; virüsleri temizleyip ostiumdan ilk çıkan turu kazanır.
    Akış takılan turun dışında kalır, diğerlerini izler. Puan: 1. 3, 2. 2, 3. 1 puan; bitiremeyen 0.
    Her cihaz kendi oyununu oynatır; ağdan yalnızca diğerlerinin akışı, nesneleri ve ilerlemesi gelir.
    ========================================================================= */
@@ -1721,7 +1785,7 @@ function mpRects(W, H) {
   const n = Math.max(2, mp.players.length), k = n - 1, phone = Math.min(W, H) < 520;
   const CW = COLS + (phone ? .6 : 1.4), CH = ROWS + (phone ? .5 : 1);   // kartın tahta çevresindeki payı (hücre)
   const m = phone ? 6 : Math.round(Math.max(10, Math.min(W, H) * .03)), g = phone ? 6 : Math.round(Math.max(8, Math.min(18, W * .014)));
-  const hd = c => { const w = c * CW; return w >= 300 ? (phone ? 56 : 62) : w >= 171 ? 54 : 46; };   // ad + skor satırı ve tıkanıklık çubuğu (style.css .opp eşikleri)
+  const hd = c => { const w = c * CW; return w >= 300 ? (phone ? 56 : 62) : w >= 171 ? 54 : 46; };   // ad + skor satırı ve temizlik çubuğu (style.css .opp eşikleri)
   const aw = phone ? W - 2 * m : Math.min(W - 2 * m, W * .86), ah = phone ? H - 2 * m : Math.min(H - 2 * m, H * .9);
   const card = (x, y, c) => { const w = Math.round(c * CW), h = Math.round(c * CH) + hd(c); return { x: Math.round(x), y: Math.round(y), w, h, cell: c, hd: hd(c), rad: Math.round(Math.max(phone ? 10 : 12, Math.min(26, w * .07))) }; };
   const fitRow = (j, w, h) => { let c = Math.min((w - (j - 1) * g) / j / CW, (h - 34) / CH); c = Math.min(c, (h - hd(c)) / CH); return c; };
@@ -1815,10 +1879,10 @@ function mpClear() {
   for (const b of mp.boxes.values()) b.box.remove(); mp.boxes.clear();
   for (const t of mp.timers) clearTimeout(t); mp.timers = [];
 }
-// kart başlığı: solda ad, sağda skor; altında tıkanıklık çubuğu (yazısı içinde). Değişmedikçe yeniden yazılmaz
+// kart başlığı: solda ad, sağda skor; altında temizlik çubuğu (yazısı içinde). Değişmedikçe yeniden yazılmaz
 function mpHead(el, p, name, score, eaten, target, open) {
-  const f = mp.fins[p.id], r = Math.max(0, 1 - eaten / Math.max(1, target)), away = !f && mp.away[p.id];
-  const note = f ? (f.ok ? `Ostiumdan çıktı · ${secs(f.time)} sn` : 'Akış takıldı') : away ? 'Ara verdi' : open ? 'Ostium açık' : `Tıkanıklık %${Math.round(r * 100)}`;
+  const f = mp.fins[p.id], r = Math.min(1, eaten / Math.max(1, target)), away = !f && mp.away[p.id];
+  const note = f ? (f.ok ? `Ostiumdan çıktı · ${secs(f.time)} sn` : 'Akış takıldı') : away ? 'Ara verdi' : open ? 'Ostium açık' : `Temizlik %${Math.round(r * 100)}`;
   const short = f ? (f.ok ? `Çıktı · ${secs(f.time)}` : 'Takıldı') : away ? 'Ara' : open ? 'Açık' : `%${Math.round(r * 100)}`;   // çok dar kart
   const fill = f ? (f.ok ? 1 : r) : open ? 1 : r, done = (f && f.ok) || open;
   const html = `<div class="hl"><b>${esc(name)}</b><em>${score}</em></div>`
@@ -1966,7 +2030,7 @@ function mpStartRound(m) {
   $('mpiLegend').innerHTML = legendFor(L);
   show('scrMpIntro');
   for (let k = Math.ceil(wait / 1000); k >= 1; k--) at(wait - k * 1000, () => { const el = $('mpCount'); el.textContent = k; el.classList.remove('go'); void el.offsetWidth; el.classList.add('go'); if (k <= 3) sfx('star'); });
-  at(wait, () => { if (mode !== 'versus') return; if (current === 'scrMpIntro') show(null); state = 'play'; levelStart = gameTime; acc = 0; waiting = false; callout('Akış başladı!', 'Mukusu topla, ostiumdan ilk sen çık'); mpSend(true); });
+  at(wait, () => { if (mode !== 'versus') return; if (current === 'scrMpIntro') show(null); state = 'play'; levelStart = gameTime; acc = 0; waiting = false; callout('Akış başladı!', 'Virüsleri topla, ostiumdan ilk sen çık'); mpSend(true); });
 }
 // bağlantıdan gelenler
 net.on(m => {

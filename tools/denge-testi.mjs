@@ -1,7 +1,7 @@
 /*
  * DENGE TESTİ
  * Her bölümü demo botuyla hızlandırılmış oynatıp kazanılabilirliği ölçer.
- * Bot mukusa, altına ve bağışıklık hücresine yönelir; virüsten ve tıkaçtan kaçınır; ortalama bir insandan beceriksizdir,
+ * Bot virüse, altına ve bağışıklık hücresine yönelir; mukus damlasından ve tıkaçtan kaçınır; ortalama bir insandan beceriksizdir,
  * yani mutlak sayılar değil bölümler arası eğri anlamlıdır.
  *
  * Kullanım:

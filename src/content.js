@@ -12,7 +12,7 @@ export const ACTS = ['Tıkanıklık', 'Virüs', 'Direnç'];
    outline: zeminin çizildiği pürüzsüz hat (hücre biriminde x,y çiftleri).
    grid: oyunun çarpışma ızgarası; merkezi hattın içinde kalan hücre '.', dışarısı '#'. '=' ostium kanalı: hattan tahtanın
    kenarına uzanır (2 hücre geniş: telefonda kaydırarak isabet ettirmek kolay olsun), hedef tamamlanınca açılır.
-   Bölüm swell: true verirse duvara bitişik iki hücre katmanı şişkin mukoza olarak başlar (kod hesaplar), mukus toplandıkça
+   Bölüm swell: true verirse duvara bitişik iki hücre katmanı şişkin mukoza olarak başlar (kod hesaplar), virüs toplandıkça
    swellAt oranlarında çekilir. Şimdilik hiçbir bölümde açık değil. */
 const SHAPES = {
   // sağ burun boşluğu (src/assets/sag_burun.png): düz duvar (septum) solda, kanal sol üstte; görseldeki siklamen işareti başlangıç.
@@ -425,19 +425,21 @@ const SHAPES = {
   },
 };
 
-// replicate: virüsün çoğalma aralığı (ms). Akışın geçtiği doku artık korumadığı için 2026-10-10'da ~%35 uzatıldı.
-// immune: mukus toplandığında ya da virüs çoğaldığında bağışıklık hücresi çıkma olasılığı (tahtada virüs varken); alınınca virüsler bir süre çoğalamaz
+// replicate: serbest virüsün çoğalma aralığı (ms); her çoğalma hedefi 1 artırır (temizlik geriler), virusMax: tahtadaki en çok serbest virüs.
+// virus: gezinen mukus damlası sayısı (kodda adı virus), virusEvery: damlanın kaç adımda bir yürüdüğü.
+// Çoğalma aralıkları akışın geçtiği doku artık korumadığı için 2026-10-10'da ~%35 uzatıldı.
+// immune: virüs toplandığında ya da çoğaldığında bağışıklık hücresi çıkma olasılığı (tahtada virüs varken); alınınca virüsler bir süre çoğalamaz
 // start: akışın başı (yukarı bakar, gövde altında). Önünde en az 12 hücre düz yol bırakılır: oyuncu ilk dönüşe hazırlanabilsin
 export const LEVELS = [
   // burun boşlukları: akış burun deliğinden (görseldeki siklamen) başlar, üstteki kanaldan çıkar
-  { act: 0, name: 'Sağ burun boşluğu', desc: 'Kaydırarak yön ver, mukusları topla, sonra açılan çıkıştan akışı dışarı çıkar.',
+  { act: 0, name: 'Sağ burun boşluğu', desc: 'Kaydırarak yön ver, virüsleri toplayıp burnu arındır, sonra açılan çıkıştan akışı dışarı çıkar.',
     target: 6, step: 150, obs: [], shape: SHAPES.noseSag, start: [12, 28], gold: .35, serum: 0, breeze: 0, obj: [['gold', 1], ['time', 50]] },
-  { act: 0, name: 'Sol burun boşluğu', desc: 'Bu kez çıkış sağ üstte. Üç mukusu art arda hızlıca toplarsan hapşırma refleksi akışı bir anlığına hızlandırır.',
+  { act: 0, name: 'Sol burun boşluğu', desc: 'Bu kez çıkış sağ üstte. Üç virüsü art arda hızlıca toplarsan hapşırma refleksi akışı bir anlığına hızlandırır.',
     target: 8, step: 138, obs: [], shape: SHAPES.noseSol, start: [13, 28], gold: .25, serum: .18, breeze: 0, obj: [['sneeze', 1], ['time', 60]] },
-  { act: 1, name: 'Sağ maksiller sinüs', desc: 'Sinüslerin en büyüğü; ağzı üst iç duvarda olduğu için akış yukarı tırmanmalı. Virüs mukusa yapışır; virüslü mukusu topla, sinüs daha çok rahatlar ve akış virüsü dışarı taşır.',
+  { act: 1, name: 'Sağ maksiller sinüs', desc: 'Sinüslerin en büyüğü; ağzı üst iç duvarda olduğu için akış yukarı tırmanmalı. Sarı mukus damlaları virüsleri yakalar; mukusa yakalanmış virüsü topla, sinüs daha çok rahatlar ve akış onu dışarı taşır.',
     // ilk şekilli bölüm ve virüsün geldiği bölüm: alan dar olduğu için yavaş ve kısa
     target: 8, step: 150, obs: [], shape: SHAPES.maxillarySag, start: [14, 20], gold: .3, serum: .12, breeze: .14, virus: 2, virusEvery: 3, obj: [['virus', 2], ['gold', 1]] },
-  { act: 1, name: 'Sol maksiller sinüs', desc: 'Bu kez ostium sol üstte. Virüsler zamanla çoğalır. Antibiyotik virüse etki etmez; virüsle vücudun kendi savunması savaşır. Bağışıklık hücresini topla, virüsler bir süre çoğalamaz.',
+  { act: 1, name: 'Sol maksiller sinüs', desc: 'Bu kez ostium sol üstte. Virüsler zamanla çoğalır ve temizlik geriler. Antibiyotik virüse etki etmez; virüsle vücudun kendi savunması savaşır. Bağışıklık hücresini topla, virüsler bir süre çoğalamaz.',
     target: 10, step: 126, obs: [], shape: SHAPES.maxillarySol, start: [11, 19], gold: .25, serum: .16, breeze: .14,
     virus: 2, replicate: 19000, virusMax: 5, immune: .45, obj: [['immune', 1], ['virus', 2]] },
   // etmoid: gözlerin arasında, ince kemik bölmelerle ayrılmış hava hücreleri (raflar); ostium altta, akış aşağı iner.
@@ -445,14 +447,14 @@ export const LEVELS = [
   { act: 1, name: 'Sağ etmoid sinüs', desc: 'Gözlerin arasındaki etmoid sinüs, ince kemik bölmelerle ayrılmış küçük hava hücrelerinden oluşur. Bölmelere çarpma, etrafından dolan; ostium altta.',
     target: 10, step: 126, obs: [{ x: 10, y: 6, w: 3, h: 1 }, { x: 11, y: 24, w: 3, h: 1 }], shape: SHAPES.etmoidSag, start: [9, 17], gold: .25, serum: .16, breeze: .14,
     virus: 2, replicate: 18000, virusMax: 5, immune: .45, obj: [['virus', 3], ['gold', 1]] },
-  { act: 1, name: 'Sol etmoid sinüs', desc: 'Dar ve uzun bir sinüs. Virüsler zamanla çoğalır; virüslü mukusu topla, bağışıklık hücresini kaçırma ve akışı alttaki ostiumdan çıkar.',
+  { act: 1, name: 'Sol etmoid sinüs', desc: 'Dar ve uzun bir sinüs. Virüsler zamanla çoğalır; mukusa yakalanmış virüsleri topla, bağışıklık hücresini kaçırma ve akışı alttaki ostiumdan çıkar.',
     target: 10, step: 124, obs: [{ x: 14, y: 5, w: 3, h: 1 }, { x: 11, y: 22, w: 3, h: 1 }], shape: SHAPES.etmoidSol, start: [13, 15], gold: .25, serum: .18, breeze: .14,
     virus: 2, replicate: 17000, virusMax: 5, immune: .5, obj: [['immune', 1], ['virus', 3]] },
   // frontal sinüs alından aşağı inen ince bir kanalla boşalır: ostium altta, akış kanaldan aşağı inmeli
-  { act: 2, name: 'Sağ frontal sinüs', desc: 'Alındaki sinüs aşağıdaki ince kanaldan boşalır. Tıkaç ileri geri geziniyor; geçtiği anda arkasından dal. Virüsleri çoğalmadan mukusa yakalat.',
+  { act: 2, name: 'Sağ frontal sinüs', desc: 'Alındaki sinüs aşağıdaki ince kanaldan boşalır. Tıkaç ileri geri geziniyor; geçtiği anda arkasından dal. Virüsleri çoğalmadan topla.',
     target: 10, step: 120, obs: [], shape: SHAPES.frontalSag, start: [9, 15], movers: [[18, 18, -1]], gold: .25, serum: .2, breeze: .14,
     virus: 2, replicate: 16000, virusMax: 5, immune: .5, obj: [['noinfect', 0], ['virus', 3]] },
-  { act: 2, name: 'Sol frontal sinüs', desc: 'Final. Bekleyen mukus sertleşir, virüsler çoğalır. Bağışıklık hücresini kaçırma, akışı kanaldan sonuna kadar taşı.',
+  { act: 2, name: 'Sol frontal sinüs', desc: 'Final. Virüsü yakalayan mukus beklerse sertleşir, virüsler çoğalır. Bağışıklık hücresini kaçırma, akışı kanaldan sonuna kadar taşı.',
     target: 11, step: 114, obs: [], shape: SHAPES.frontalSol, start: [16, 15], movers: [[7, 18, 1]], harden: 10000, gold: .25, serum: .2, breeze: .2,
     virus: 3, replicate: 15000, virusMax: 6, immune: .5, obj: [['noinfect', 0], ['nohard', 0]] },
 ];
@@ -482,27 +484,27 @@ export const INFO = [
 // Bilgilendirmenin "Nasıl oynanır" bölümü
 export const HOWTO = [
   'Kaydırarak yön ver; masaüstünde ok tuşları ya da WASD.',
-  'Mukusları topla, tıkanıklık azalsın. Hedefe ulaşınca ostium açılır; akışı parlayan çıkıştan dışarı çıkar.',
+  'Virüsleri topla, sinüs arınsın. Temizlik dolunca ostium açılır; akışı parlayan çıkıştan dışarı çıkar.',
   'Duvara, engellere ve kendi kuyruğuna çarpma. Akış takılırsa oyun biter ve skorun adınla skor tablosuna yazılır.',
   'Amaç 1. bölümden son bölüme hiç takılmadan ulaşmak. Skor bölümler boyunca birikir.',
-  'Virüsler mukusa yapışır. Virüslü mukusu topla, akış onu dışarı taşır. Antibiyotik değil, vücudun kendi temizliği.',
+  'Sarı mukus damlaları virüslere yapışıp onları yakalar. Mukusa yakalanmış virüsü topla, akış onu dışarı taşır. Antibiyotik değil, vücudun kendi temizliği.',
   'Her bölümde üç yıldız var. Bölümü bitirince bir bilgi kartı açılır; hepsi Koleksiyon’da.',
 ];
 // Son bölümün sonunda ve ara sıra ipucu olarak: oyun antibiyotiğe karşıymış gibi okunmasın
 export const CLOSING = 'Antibiyotik gerektiğinde hayat kurtarır. Ne zaman gerektiğine hekim karar verir; reçetesiz kullanmayın, eczacınıza ve doktorunuza danışın.';
 
 export const TIPS = [
-  'Üç mukusu art arda hızlıca topla, hapşırma refleksi tetiklenir ve bonus puan kazanırsın.',
+  'Üç virüsü art arda hızlıca topla, hapşırma refleksi tetiklenir ve bonus puan kazanırsın.',
   'Kuyruğunu kenarlara yaslayarak ilerlersen ortada manevra alanın kalır.',
   'Altın siklamen yanıp sönmeye başladıysa kaybolmak üzeredir.',
   'Serum fizyolojik akışı yavaşlatır; dar geçitlerden önce almak işe yarar.',
-  'Ferah esinti yakındaki mukusu sana doğru çeker.',
+  'Ferah esinti yakındaki virüsleri sana doğru çeker.',
   'Tıkaçlar sadece yatay gider. Geçtikleri anda arkalarından dal.',
   'Titreyen mukus birazdan sertleşecek. Önce onu topla.',
   'Parmağını kaldırmadan kaydırmaya devam edersen art arda dönüş yapabilirsin.',
-  'Virüsler mukusa yapışır. Virüslü mukus tıkanıklığı iki kat azaltır; çıkışa taşırsan bonus da alırsın.',
+  'Mukus damlaları virüslere yapışır. Mukusa yakalanmış virüs temizliği iki kat ilerletir; çıkışa taşırsan bonus da alırsın.',
   'Mukus virüsleri yakalar, akış onları dışarı taşır. Vücudun kendi temizliği böyle çalışır.',
-  'Virüse kafa atma, akış kısalır. Onları mukusa yönlendir.',
+  'Mukus damlalarını yutma, puan kaybedersin. Bırak virüsleri onlar yakalasın.',
   'Bağışıklık hücresini aldığında virüsler bir süre çoğalamaz. Titreyen bir virüs gördüysen onu kap.',
   CLOSING,
 ];
@@ -518,7 +520,7 @@ export const SKINS = [
   { name: 'Turkuaz',     need: 0,  petal: 0x1FB5A0 },   // çok oyunculuda üçüncü oyuncunun rengi
 ];
 export const BADGES = [
-  ['first',   '💧', 'İlk damla',        'İlk mukusunu topla'],
+  ['first',   '✨', 'İlk temizlik',     'İlk virüsünü topla'],
   ['sneeze5', '🤧', 'Hapşırma ustası',  'Tek oyunda 5 hapşırma refleksi'],
   ['gold10',  '🌼', 'Altın toplayıcı',  'Toplam 10 altın siklamen'],
   ['len40',   '〰️', 'Uzun akış',        'Akışı 40 uzunluğa ulaştır'],
@@ -531,18 +533,18 @@ export const BADGES = [
   ['virus20', '🦠', 'Kapı dışarı',      'Toplam 20 virüsü dışarı taşı'],
 ];
 export const ITEM_INFO = {
-  mucus:  ['Mukus', 'Topla, akış uzar'],
+  mucus:  ['Virüs', 'Topla, sinüs arınır, akış uzar'],
   gold:   ['Altın siklamen', 'Kısa süre görünür, bol puan'],
   serum:  ['Serum fizyolojik', 'Akış 6 sn yavaşlar'],
-  breeze: ['Ferah esinti', 'Yakındaki mukusu çeker'],
+  breeze: ['Ferah esinti', 'Yakındaki virüsleri çeker'],
   polyp:  ['Polip', 'Çarpma, etrafından dolan'],
   septum: ['Raf', 'Çarpma, etrafından dolan'],
   plug:   ['Tıkaç', 'İleri geri gider'],
-  crust:  ['Sert mukus', 'Bekleyen mukus sertleşir'],
-  virus:  ['Virüs', 'Çarpma, mukusa yapışmasını bekle'],
-  infected: ['Virüslü mukus', 'Topla: tıkanıklık iki kat azalır, çıkışa taşı'],
+  crust:  ['Sert mukus', 'Virüsü yakalayan mukus beklerse sertleşir'],
+  virus:  ['Mukus damlası', 'Virüsleri yakalar; yutarsan puan kaybedersin'],
+  infected: ['Yakalanmış virüs', 'Topla: temizlik iki kat ilerler, çıkışa taşı'],
   immune: ['Bağışıklık hücresi', 'Vücudun savunması: virüsler bir süre çoğalamaz'],
-  swell:  ['Şişlik', 'Mukus topladıkça çekilir, sinüs genişler'],
+  swell:  ['Şişlik', 'Virüs topladıkça çekilir, sinüs genişler'],
 };
 export const GOAL_TEXT = {
   time: v => `${v} saniyenin altında bitir`, sneeze: v => `${v} hapşırma refleksi yap`,
