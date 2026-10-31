@@ -1,7 +1,9 @@
 /* =========================================================================
-   KAYIT: yalnızca bu cihazda (localStorage). Oyun veri toplamaz, sunucuya bir şey gönderilmez.
+   KAYIT: ilerleme ve ayarlar yalnızca bu cihazda (localStorage).
+   Skor tablosu: Supabase hazırsa herkese açık liste (snake_scores: ad, skor, bölüm); değilse ya da ulaşılamazsa bu cihazdaki liste.
    ========================================================================= */
 import { LEVELS } from './content.js';
+import { supabase, SUPABASE_OK } from './supabase.js';
 
 const KEY = 'siklamen_akis_v1';
 const store = {
@@ -29,4 +31,28 @@ export function addScore(mode, e) {
   const rank = list.findIndex(x => x.id === id) + 1;
   list.length = Math.min(list.length, KEEP); save();
   return { id, rank };
+}
+
+// Herkese açık skor tablosu. Ağ yanıt vermezse beklemeden null döner: çağıran bu cihazdaki listeye düşer
+export const ONLINE = SUPABASE_OK;
+const TABLE = 'snake_scores', WAIT = 10000;
+const within = p => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error('zaman aşımı')), WAIT))]);
+export async function loadTop(n = 10) {
+  if (!ONLINE) return null;
+  try {
+    const { data, error } = await within(supabase.from(TABLE).select('id,name,score').order('score', { ascending: false }).order('id').limit(n));
+    if (error) throw error;
+    return data.map(r => ({ id: r.id, n: r.name, s: r.score }));
+  } catch (e) { console.warn('[skor] tablo okunamadı, bu cihazdaki liste gösteriliyor:', e); return null; }
+}
+// e: { n, s, l, f }. Dönen: { id, rank, n, s } (sıra: daha yüksek skorlar + eşit skorda önce yapanlar + 1)
+export async function postScore(e) {
+  if (!ONLINE) return null;
+  try {
+    const { data, error } = await within(supabase.from(TABLE).insert({ name: e.n, score: e.s, level: e.l | 0, finished: !!e.f }).select('id').single());
+    if (error) throw error;
+    const { count, error: err } = await within(supabase.from(TABLE).select('id', { count: 'exact', head: true }).or(`score.gt.${e.s},and(score.eq.${e.s},id.lt.${data.id})`));
+    if (err) throw err;
+    return { id: data.id, rank: (count | 0) + 1, n: e.n, s: e.s };
+  } catch (err) { console.warn('[skor] gönderilemedi, yalnızca bu cihazda kaldı:', err); return null; }
 }

@@ -62,7 +62,7 @@
         </div>
       </div>
       <div class="homestats"><span><b id="hsStars">0</b>/<span id="hsStarsTotal">18</span> yıldız</span><span>Rekor <b id="hsBest">0</b></span></div>
-      <p class="legal">Bu oyun genel bilgilendirme amaçlıdır; tanı koymaz, tedavi önermez. Antibiyotik kullanımına hekim karar verir. Sağlığınızla ilgili konularda eczacınıza ve doktorunuza danışın. Oyun kayıt istemez, veri toplamaz.</p>
+      <p class="legal" id="legalHome">Bu oyun genel bilgilendirme amaçlıdır; tanı koymaz, tedavi önermez. Antibiyotik kullanımına hekim karar verir. Sağlığınızla ilgili konularda eczacınıza ve doktorunuza danışın. Oyun kayıt istemez, veri toplamaz.</p>
     </div>
   </section>
 
@@ -130,7 +130,7 @@
       <label class="namefield" for="nameInput">Adın
         <input id="nameInput" name="ad" type="text" maxlength="14" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done" placeholder="Adını yaz" required>
       </label>
-      <p class="legal" style="margin:8px 0 0">Adın yalnızca bu cihazdaki skor tablosunda görünür; hiçbir yere gönderilmez.</p>
+      <p class="legal" id="legalName" style="margin:8px 0 0">Adın yalnızca bu cihazdaki skor tablosunda görünür; hiçbir yere gönderilmez.</p>
       <div class="actions">
         <button class="btn" id="btnSaveName" type="submit" disabled>Kaydet</button>
       </div>
@@ -146,7 +146,7 @@
       </div>
       <p class="sub" id="boardRank"></p>
       <ol class="board" id="boardList"></ol>
-      <p class="legal">Skorlar yalnızca bu cihazda tutulur.</p>
+      <p class="legal" id="boardNote">Skorlar yalnızca bu cihazda tutulur.</p>
       <div class="actions" id="boardActions">
         <button class="btn" id="btnBoardNext">Devam</button>
       </div>

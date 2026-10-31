@@ -1,6 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { COLS, ROWS, ACTS, LEVELS, DEMO, FACTS, INFO, HOWTO, CLOSING, TIPS, SKINS, BADGES, ITEM_INFO, GOAL_TEXT, REASONS } from './content.js';
-import { prog, save, totalStars, addScore, cleanName } from './save.js';
+import { prog, save, totalStars, addScore, cleanName, ONLINE, loadTop, postScore } from './save.js';
 import { initAudio, playSfx, setVolumes, musicScene, musicDuck, audioHidden } from './audio.js';
 import { createMusic } from './music.js';
 import { TS, cnv, seeded, C, HALO, halo } from './textures.js';
@@ -1706,19 +1706,33 @@ $('settingsBack').onclick = () => { if (settingsFrom === 'scrPause' && state ===
 $('btnSettings').onclick = () => openSettings('scrHome');
 
 /* =========================================================================
-   SKOR TABLOSU: ölünce ya da oyun bitince isim zorunlu; liste yalnızca bu cihazda
+   SKOR TABLOSU: ölünce ya da oyun bitince isim zorunlu. Skor her zaman bu cihaza da yazılır;
+   Supabase hazırsa herkese açık listeye gönderilir ve tabloda o liste görünür, ulaşılamazsa bu cihazdaki liste.
    ========================================================================= */
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 let nameDone = null, boardMine = null, boardThen = null;
+// çevrim içi tablo: rows null ise bu cihazdaki liste gösterilir; mine: az önce gönderilen skor ({ id, rank, n, s })
+const online = { rows: null, mine: null, loading: false, seq: 0 };
+if (ONLINE) {
+  $('legalHome').textContent = $('legalHome').textContent.replace('Oyun kayıt istemez, veri toplamaz.', 'Oyun hesap istemez; yalnızca skor tablosu için yazdığın takma ad ve skorun kaydedilir.');
+  $('legalName').textContent = 'Takma adın ve skorun herkese açık skor tablosunda görünür; gerçek adını yazma.';
+} else $('btnMulti').style.display = 'none';   // çok oyunculu Supabase Realtime ile yürür
 function askName(entry, then) {
   state = 'name';
   $('nmKicker').textContent = entry.f ? 'Tüm sinüsler açıldı!' : 'Akış takıldı';
   $('nmScore').textContent = entry.s;
   $('nmSub').textContent = entry.f ? 'Skor · tüm bölümler' : `Skor · ${entry.l + 1}. bölüm`;
   $('nameInput').value = ''; $('btnSaveName').disabled = true;
-  nameDone = n => openBoard(addScore('adventure', { ...entry, n }), then);
+  nameDone = async n => {
+    const e = { ...entry, n }, mine = addScore('adventure', e);
+    if (ONLINE) { $('btnSaveName').disabled = true; $('btnSaveName').textContent = 'Kaydediliyor…'; }
+    const remote = await postScore(e);
+    $('btnSaveName').textContent = saveLabel;
+    openBoard(mine, then, remote);
+  };
   show('scrName'); setTimeout(() => $('nameInput').focus({ preventScroll: true }), 60);
 }
+const saveLabel = $('btnSaveName').textContent;
 $('nameInput').oninput = () => { $('btnSaveName').disabled = !cleanName($('nameInput').value); };
 $('nameForm').onsubmit = (e) => {
   e.preventDefault();
@@ -1727,22 +1741,33 @@ $('nameForm').onsubmit = (e) => {
   nameDone = null; $('nameInput').blur(); f(n);
 };
 // mine: az önce kaydedilen skor (vurgulanır); then: varsa "Devam" ile dönülecek ekran, yoksa ana menüden açılmıştır
-function openBoard(mine = null, then = null) {
+// remote: çevrim içi listeye gönderilen skor (gönderilemediyse null: bu cihazdaki sıra gösterilir)
+function openBoard(mine = null, then = null, remote = null) {
   boardMine = mine; boardThen = then;
   $('boardBack').style.display = then ? 'none' : ''; $('boardActions').style.display = then ? '' : 'none';
-  renderBoard(); show('scrBoard');
-  // küçük ekranda kendi satırı görünsün: yalnızca kart kayar
+  online.rows = null; online.mine = remote; online.loading = ONLINE;
+  if (ONLINE) {
+    const seq = ++online.seq;
+    loadTop().then(rows => { if (seq !== online.seq) return; online.rows = rows; online.loading = false; renderBoard(); boardScroll(); });
+  }
+  renderBoard(); show('scrBoard'); boardScroll();
+  if (then && kbMode) setTimeout(() => $('btnBoardNext').focus({ preventScroll: true }), 30);
+}
+// küçük ekranda kendi satırı görünsün: yalnızca kart kayar
+function boardScroll() {
   const card = $('scrBoard').querySelector('.card'), me = $('boardList').querySelector('.me');
   card.scrollTop = 0;
   if (me) card.scrollTop = Math.max(0, me.getBoundingClientRect().top - card.getBoundingClientRect().top - card.clientHeight / 2);
-  if (then && kbMode) setTimeout(() => $('btnBoardNext').focus({ preventScroll: true }), 30);
 }
 function renderBoard() {
-  const list = prog.scores.adventure, mine = boardMine;
+  const on = !!online.rows, list = on ? online.rows : prog.scores.adventure, mine = on ? online.mine : boardMine;
+  $('boardNote').textContent = on ? 'Herkese açık skor tablosu · ilk 10' : online.loading ? 'Skor tablosu yükleniyor…' : ONLINE ? 'Bağlantı kurulamadı: bu cihazdaki skorlar gösteriliyor.' : 'Skorlar yalnızca bu cihazda tutulur.';
+  if (online.loading) { $('boardList').innerHTML = '<li class="empty">Yükleniyor…</li>'; $('boardRank').style.display = 'none'; return; }
   const row = (e, i) => `<li class="${mine && e.id === mine.id ? 'me' : ''}"><span class="rk">${i + 1}</span><span class="nm"><b>${esc(e.n)}</b></span><span class="sc">${e.s}</span></li>`;
   let html = list.slice(0, 10).map(row).join('');
   const at = mine ? list.findIndex(e => e.id === mine.id) : -1;
   if (at >= 10) html += row(list[at], at);   // ilk 10'da değilse kendi satırı altta
+  else if (on && mine && at < 0 && mine.rank > 10) html += row(mine, mine.rank - 1);   // çevrim içi listede yalnızca ilk 10 gelir
   $('boardList').innerHTML = html || '<li class="empty">Henüz skor yok. İlk sen ol!</li>';
   $('boardRank').textContent = mine ? (mine.rank === 1 ? 'Tablonun zirvesindesin!' : `Sıran: ${mine.rank}.`) : '';
   $('boardRank').style.display = mine ? '' : 'none';
